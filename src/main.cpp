@@ -184,7 +184,7 @@ int main() {
     dl11_window.Render();
     rk11_window.Render();
 
-    ImGui::ShowDemoWindow();
+    // ImGui::ShowDemoWindow();
 
     // Rendering
     ImGui::Render();

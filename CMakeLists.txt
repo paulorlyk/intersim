@@ -20,6 +20,7 @@ file(GLOB IMGUI_SOURCES
 
 add_executable(intersim
     ${IMGUI_SOURCES}
+
     src/main.cpp
     src/log.h
     src/taskScheduler.cpp
