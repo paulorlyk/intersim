@@ -904,7 +904,7 @@ bool CPU::Run() {
     case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) || (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
     case _bpl:  BRANCH_IF(!PSW_GET_N(_PSW),                                         inst.offset); break;
     case _bmi:  BRANCH_IF(PSW_GET_N(_PSW),                                          inst.offset); break;
-    case _bhi:  BRANCH_IF(!(PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW)),                   inst.offset); break;
+    case _bhi:  BRANCH_IF(!PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW),                     inst.offset); break;
     case _blos: BRANCH_IF(PSW_GET_C(_PSW) || PSW_GET_Z(_PSW),                       inst.offset); break;
     case _bvc:  BRANCH_IF(!PSW_GET_V(_PSW),                                         inst.offset); break;
     case _bvs:  BRANCH_IF(PSW_GET_V(_PSW),                                          inst.offset); break;
