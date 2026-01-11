@@ -140,126 +140,125 @@ enum _instructionType {
   _instt_system
 };
 
-struct _instruction
-{
-  enum _instructionType type;
-  enum _opcode opcode;
-  enum CpuAddressingMode srcMode;
+struct _instruction{
+  _instructionType type;
+  _opcode opcode;
+  CpuAddressingMode srcMode;
   int src;
-  enum CpuAddressingMode dstMode;
+  CpuAddressingMode dstMode;
   int dst;
   int reg;
   int offset;
 };
 
 static void _initNameLUT() {
-    __arrRegNameLUT[0] = "R0";
-    __arrRegNameLUT[1] = "R1";
-    __arrRegNameLUT[2] = "R2";
-    __arrRegNameLUT[3] = "R3";
-    __arrRegNameLUT[4] = "R4";
-    __arrRegNameLUT[5] = "R5";
-    __arrRegNameLUT[6] = "SP";
-    __arrRegNameLUT[7] = "PC";
+  __arrRegNameLUT[0] = "R0";
+  __arrRegNameLUT[1] = "R1";
+  __arrRegNameLUT[2] = "R2";
+  __arrRegNameLUT[3] = "R3";
+  __arrRegNameLUT[4] = "R4";
+  __arrRegNameLUT[5] = "R5";
+  __arrRegNameLUT[6] = "SP";
+  __arrRegNameLUT[7] = "PC";
 
-    __arrAddrModePrefixLUT[_reg]                  = "";
-    __arrAddrModePrefixLUT[_reg_deferred]         = "(";
-    __arrAddrModePrefixLUT[_auto_inc]             = "(";
-    __arrAddrModePrefixLUT[_auto_inc_deferred]    = "@(";
-    __arrAddrModePrefixLUT[_auto_dec]             = "-(";
-    __arrAddrModePrefixLUT[_auto_dec_deferred]    = "@-(";
-    __arrAddrModePrefixLUT[_index]                = "X(";
-    __arrAddrModePrefixLUT[_index_deferred]       = "@X(";
+  __arrAddrModePrefixLUT[_reg]                  = "";
+  __arrAddrModePrefixLUT[_reg_deferred]         = "(";
+  __arrAddrModePrefixLUT[_auto_inc]             = "(";
+  __arrAddrModePrefixLUT[_auto_inc_deferred]    = "@(";
+  __arrAddrModePrefixLUT[_auto_dec]             = "-(";
+  __arrAddrModePrefixLUT[_auto_dec_deferred]    = "@-(";
+  __arrAddrModePrefixLUT[_index]                = "X(";
+  __arrAddrModePrefixLUT[_index_deferred]       = "@X(";
 
-    __arrAddrModeSuffixLUT[_reg]                  = "";
-    __arrAddrModeSuffixLUT[_reg_deferred]         = ")";
-    __arrAddrModeSuffixLUT[_auto_inc]             = ")+";
-    __arrAddrModeSuffixLUT[_auto_inc_deferred]    = ")+";
-    __arrAddrModeSuffixLUT[_auto_dec]             = ")";
-    __arrAddrModeSuffixLUT[_auto_dec_deferred]    = ")";
-    __arrAddrModeSuffixLUT[_index]                = ")";
-    __arrAddrModeSuffixLUT[_index_deferred]       = ")";
+  __arrAddrModeSuffixLUT[_reg]                  = "";
+  __arrAddrModeSuffixLUT[_reg_deferred]         = ")";
+  __arrAddrModeSuffixLUT[_auto_inc]             = ")+";
+  __arrAddrModeSuffixLUT[_auto_inc_deferred]    = ")+";
+  __arrAddrModeSuffixLUT[_auto_dec]             = ")";
+  __arrAddrModeSuffixLUT[_auto_dec_deferred]    = ")";
+  __arrAddrModeSuffixLUT[_index]                = ")";
+  __arrAddrModeSuffixLUT[_index_deferred]       = ")";
 
-    for(size_t i = 0; i < sizeof(__arrOpcodeNameLUT) / sizeof(__arrOpcodeNameLUT[0]); ++i)
-        __arrOpcodeNameLUT[i] = "???";
+  for(size_t i = 0; i < sizeof(__arrOpcodeNameLUT) / sizeof(__arrOpcodeNameLUT[0]); ++i)
+    __arrOpcodeNameLUT[i] = "???";
 
-    __arrOpcodeNameLUT[_mov]    = "MOV";
-    __arrOpcodeNameLUT[_movb]   = "MOVB";
-    __arrOpcodeNameLUT[_cmp]    = "CMP";
-    __arrOpcodeNameLUT[_cmpb]   = "CMPB";
-    __arrOpcodeNameLUT[_bit]    = "BIT";
-    __arrOpcodeNameLUT[_bitb]   = "BITB";
-    __arrOpcodeNameLUT[_bic]    = "BIC";
-    __arrOpcodeNameLUT[_bicb]   = "BICB";
-    __arrOpcodeNameLUT[_bis]    = "BIS";
-    __arrOpcodeNameLUT[_bisb]   = "BISB";
-    __arrOpcodeNameLUT[_add]    = "ADD";
-    __arrOpcodeNameLUT[_sub]    = "SUB";
-    __arrOpcodeNameLUT[_mul]    = "MUL";
-    __arrOpcodeNameLUT[_div]    = "DIV";
-    __arrOpcodeNameLUT[_ash]    = "ASH";
-    __arrOpcodeNameLUT[_ashc]   = "ASHC";
-    __arrOpcodeNameLUT[_xor]    = "XOR";
-    __arrOpcodeNameLUT[_fp]     = "FP";
-    __arrOpcodeNameLUT[_sys]    = "SYS";
-    __arrOpcodeNameLUT[_sob]    = "SOB";
-    __arrOpcodeNameLUT[_swab]   = "SWAB";
-    __arrOpcodeNameLUT[_clr]    = "CLR";
-    __arrOpcodeNameLUT[_clrb]   = "CLRB";
-    __arrOpcodeNameLUT[_com]    = "COM";
-    __arrOpcodeNameLUT[_comb]   = "COMB";
-    __arrOpcodeNameLUT[_inc]    = "INC";
-    __arrOpcodeNameLUT[_incb]   = "INCB";
-    __arrOpcodeNameLUT[_dec]    = "DEC";
-    __arrOpcodeNameLUT[_decb]   = "DECB";
-    __arrOpcodeNameLUT[_neg]    = "NEG";
-    __arrOpcodeNameLUT[_negb]   = "NEGB";
-    __arrOpcodeNameLUT[_adc]    = "ADC";
-    __arrOpcodeNameLUT[_adcb]   = "ADCB";
-    __arrOpcodeNameLUT[_sbc]    = "SBC";
-    __arrOpcodeNameLUT[_sbcb]   = "SBCB";
-    __arrOpcodeNameLUT[_tst]    = "TST";
-    __arrOpcodeNameLUT[_tstb]   = "TSTB";
-    __arrOpcodeNameLUT[_ror]    = "ROR";
-    __arrOpcodeNameLUT[_rorb]   = "RORB";
-    __arrOpcodeNameLUT[_rol]    = "ROL";
-    __arrOpcodeNameLUT[_rolb]   = "ROLB";
-    __arrOpcodeNameLUT[_asr]    = "ASR";
-    __arrOpcodeNameLUT[_asrb]   = "ASRB";
-    __arrOpcodeNameLUT[_asl]    = "ASL";
-    __arrOpcodeNameLUT[_aslb]   = "ASLB";
-    __arrOpcodeNameLUT[_mark]   = "MARK";
-    __arrOpcodeNameLUT[_mtps]   = "MTPS";
-    __arrOpcodeNameLUT[_mfpi]   = "MFPI";
-    __arrOpcodeNameLUT[_mfpd]   = "MFPD";
-    __arrOpcodeNameLUT[_mtpi]   = "MTPI";
-    __arrOpcodeNameLUT[_mtpd]   = "MTPD";
-    __arrOpcodeNameLUT[_sxt]    = "SXT";
-    __arrOpcodeNameLUT[_mfps]   = "MFPS";
-    __arrOpcodeNameLUT[_br]     = "BR";
-    __arrOpcodeNameLUT[_bne]    = "BNE";
-    __arrOpcodeNameLUT[_beq]    = "BEQ";
-    __arrOpcodeNameLUT[_bge]    = "BGE";
-    __arrOpcodeNameLUT[_blt]    = "BLT";
-    __arrOpcodeNameLUT[_bgt]    = "BGT";
-    __arrOpcodeNameLUT[_ble]    = "BLE";
-    __arrOpcodeNameLUT[_bpl]    = "BPL";
-    __arrOpcodeNameLUT[_bmi]    = "BMI";
-    __arrOpcodeNameLUT[_bhi]    = "BHI";
-    __arrOpcodeNameLUT[_blos]   = "BLOS";
-    __arrOpcodeNameLUT[_bvc]    = "BVC";
-    __arrOpcodeNameLUT[_bvs]    = "BVS";
-    __arrOpcodeNameLUT[_bcc]    = "BCC/BHIS";
-    __arrOpcodeNameLUT[_bcs]    = "BCS/BLO";
-    __arrOpcodeNameLUT[_jmp]    = "JMP";
-    __arrOpcodeNameLUT[_jsr]    = "JSR";
-    __arrOpcodeNameLUT[_rts]    = "RTS";
-    __arrOpcodeNameLUT[_reset]  = "RESET";
-    __arrOpcodeNameLUT[_spl]    = "SPL";
-    __arrOpcodeNameLUT[_rti]    = "RTI";
-    __arrOpcodeNameLUT[_wait_op]= "WAIT";
-    __arrOpcodeNameLUT[_emt]    = "EMT";
-    __arrOpcodeNameLUT[_trap_op]= "TRAP";
+  __arrOpcodeNameLUT[_mov]    = "MOV";
+  __arrOpcodeNameLUT[_movb]   = "MOVB";
+  __arrOpcodeNameLUT[_cmp]    = "CMP";
+  __arrOpcodeNameLUT[_cmpb]   = "CMPB";
+  __arrOpcodeNameLUT[_bit]    = "BIT";
+  __arrOpcodeNameLUT[_bitb]   = "BITB";
+  __arrOpcodeNameLUT[_bic]    = "BIC";
+  __arrOpcodeNameLUT[_bicb]   = "BICB";
+  __arrOpcodeNameLUT[_bis]    = "BIS";
+  __arrOpcodeNameLUT[_bisb]   = "BISB";
+  __arrOpcodeNameLUT[_add]    = "ADD";
+  __arrOpcodeNameLUT[_sub]    = "SUB";
+  __arrOpcodeNameLUT[_mul]    = "MUL";
+  __arrOpcodeNameLUT[_div]    = "DIV";
+  __arrOpcodeNameLUT[_ash]    = "ASH";
+  __arrOpcodeNameLUT[_ashc]   = "ASHC";
+  __arrOpcodeNameLUT[_xor]    = "XOR";
+  __arrOpcodeNameLUT[_fp]     = "FP";
+  __arrOpcodeNameLUT[_sys]    = "SYS";
+  __arrOpcodeNameLUT[_sob]    = "SOB";
+  __arrOpcodeNameLUT[_swab]   = "SWAB";
+  __arrOpcodeNameLUT[_clr]    = "CLR";
+  __arrOpcodeNameLUT[_clrb]   = "CLRB";
+  __arrOpcodeNameLUT[_com]    = "COM";
+  __arrOpcodeNameLUT[_comb]   = "COMB";
+  __arrOpcodeNameLUT[_inc]    = "INC";
+  __arrOpcodeNameLUT[_incb]   = "INCB";
+  __arrOpcodeNameLUT[_dec]    = "DEC";
+  __arrOpcodeNameLUT[_decb]   = "DECB";
+  __arrOpcodeNameLUT[_neg]    = "NEG";
+  __arrOpcodeNameLUT[_negb]   = "NEGB";
+  __arrOpcodeNameLUT[_adc]    = "ADC";
+  __arrOpcodeNameLUT[_adcb]   = "ADCB";
+  __arrOpcodeNameLUT[_sbc]    = "SBC";
+  __arrOpcodeNameLUT[_sbcb]   = "SBCB";
+  __arrOpcodeNameLUT[_tst]    = "TST";
+  __arrOpcodeNameLUT[_tstb]   = "TSTB";
+  __arrOpcodeNameLUT[_ror]    = "ROR";
+  __arrOpcodeNameLUT[_rorb]   = "RORB";
+  __arrOpcodeNameLUT[_rol]    = "ROL";
+  __arrOpcodeNameLUT[_rolb]   = "ROLB";
+  __arrOpcodeNameLUT[_asr]    = "ASR";
+  __arrOpcodeNameLUT[_asrb]   = "ASRB";
+  __arrOpcodeNameLUT[_asl]    = "ASL";
+  __arrOpcodeNameLUT[_aslb]   = "ASLB";
+  __arrOpcodeNameLUT[_mark]   = "MARK";
+  __arrOpcodeNameLUT[_mtps]   = "MTPS";
+  __arrOpcodeNameLUT[_mfpi]   = "MFPI";
+  __arrOpcodeNameLUT[_mfpd]   = "MFPD";
+  __arrOpcodeNameLUT[_mtpi]   = "MTPI";
+  __arrOpcodeNameLUT[_mtpd]   = "MTPD";
+  __arrOpcodeNameLUT[_sxt]    = "SXT";
+  __arrOpcodeNameLUT[_mfps]   = "MFPS";
+  __arrOpcodeNameLUT[_br]     = "BR";
+  __arrOpcodeNameLUT[_bne]    = "BNE";
+  __arrOpcodeNameLUT[_beq]    = "BEQ";
+  __arrOpcodeNameLUT[_bge]    = "BGE";
+  __arrOpcodeNameLUT[_blt]    = "BLT";
+  __arrOpcodeNameLUT[_bgt]    = "BGT";
+  __arrOpcodeNameLUT[_ble]    = "BLE";
+  __arrOpcodeNameLUT[_bpl]    = "BPL";
+  __arrOpcodeNameLUT[_bmi]    = "BMI";
+  __arrOpcodeNameLUT[_bhi]    = "BHI";
+  __arrOpcodeNameLUT[_blos]   = "BLOS";
+  __arrOpcodeNameLUT[_bvc]    = "BVC";
+  __arrOpcodeNameLUT[_bvs]    = "BVS";
+  __arrOpcodeNameLUT[_bcc]    = "BCC/BHIS";
+  __arrOpcodeNameLUT[_bcs]    = "BCS/BLO";
+  __arrOpcodeNameLUT[_jmp]    = "JMP";
+  __arrOpcodeNameLUT[_jsr]    = "JSR";
+  __arrOpcodeNameLUT[_rts]    = "RTS";
+  __arrOpcodeNameLUT[_reset]  = "RESET";
+  __arrOpcodeNameLUT[_spl]    = "SPL";
+  __arrOpcodeNameLUT[_rti]    = "RTI";
+  __arrOpcodeNameLUT[_wait_op]= "WAIT";
+  __arrOpcodeNameLUT[_emt]    = "EMT";
+  __arrOpcodeNameLUT[_trap_op]= "TRAP";
 }
 
 static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cpu_addr *pc, cpu_word PSW, Mem* mem, MMU* mmu) {
@@ -323,7 +322,6 @@ static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cp
 
   return res;
 }
-
 
 static const char* _formatInstruction(cpu_addr pc, cpu_word instWord, const struct _instruction* pInst, cpu_word PSW, Mem* mem, MMU* mmu) {
   static char res[256] = "";
@@ -1223,31 +1221,31 @@ bool CPU::_decode(cpu_word inst, struct _instruction *pInst) {
     if((inst & 0x7800) == 0x0800) {       // x000 1xxx xxxx xxxx
       if((inst & 0x7E00) == 0x0800) {     // x000 100x xxxx xxxx
         if((inst & 0xFE00) == 0x0800) {   // 0000 100x xxxx xxxx
-            // JSR
-            //  15    9   8     6   5  3   2      0
-            // [0000100] [LinkReg] [Mode] [Register]
+          // JSR
+          //  15    9   8     6   5  3   2      0
+          // [0000100] [LinkReg] [Mode] [Register]
 
-            //DEBUG("Decoder: Jsr instruction");
+          //DEBUG("Decoder: Jsr instruction");
 
-            pInst->type = _instt_double_op;
-            pInst->opcode = (_opcode)(inst & 0xFE00);
-            pInst->srcMode = _reg;
-            pInst->src = (inst & 0x01C0) >> 6;
-            pInst->dstMode = (CpuAddressingMode)((inst & 0x0038) >> 3);
-            pInst->dst = (inst & 0x0007) >> 0;
+          pInst->type = _instt_double_op;
+          pInst->opcode = (_opcode)(inst & 0xFE00);
+          pInst->srcMode = _reg;
+          pInst->src = (inst & 0x01C0) >> 6;
+          pInst->dstMode = (CpuAddressingMode)((inst & 0x0038) >> 3);
+          pInst->dst = (inst & 0x0007) >> 0;
         } else {   // 1000 100x xxxx xxxx
-            // EMT / TRAP
-            //  15    9   8        7  0
-            // [1000100] [Opcode] [NNNN]
-            //
-            // Opcode   Mnemonic
-            // 1040     EMT
-            // 1044     TRAP
+          // EMT / TRAP
+          //  15    9   8        7  0
+          // [1000100] [Opcode] [NNNN]
+          //
+          // Opcode   Mnemonic
+          // 1040     EMT
+          // 1044     TRAP
 
-            //DEBUG("Decoder: EMT/TRAP instruction");
+          //DEBUG("Decoder: EMT/TRAP instruction");
 
-            pInst->type = _instt_system;
-            pInst->opcode = (_opcode)(inst & 0x8900);
+          pInst->type = _instt_system;
+          pInst->opcode = (_opcode)(inst & 0x8900);
         }
       } else if((inst & 0x7E00) == 0x0E00) {  // x000 111x xxxx xxxx
         DEBUG("UNKNOWN INSTRUCTION: 0%06o", inst);
@@ -1405,8 +1403,8 @@ bool CPU::_decode(cpu_word inst, struct _instruction *pInst) {
 
   // TODO: Debug
   if(pInst->opcode == 0xFFFFFF) {
-      DEBUG("UNKNOWN INSTRUCTION: 0%06o", inst);
-      assert(false);
+    DEBUG("UNKNOWN INSTRUCTION: 0%06o", inst);
+    assert(false);
   }
 
   return true;
