@@ -85,6 +85,8 @@ class CPU1170_window {
 
       ImGui::RadioButton("Wait", _cpu->IsWait());
       ImGui::SameLine();
+      ImGui::RadioButton("Halt", _cpu->IsHalt());
+      ImGui::SameLine();
       ImGui::RadioButton("IRQ", _cpu->HasIRQ());
 
       ImGui::End();

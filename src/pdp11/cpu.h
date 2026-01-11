@@ -127,6 +127,7 @@ class CPU : public UnibusDevice {
     const cpu_word* Get_RegSet1() const { return _regSet[1]; }
     const cpu_word* Get_LastSP() const { return _lastSP; }
     bool IsWait() const { return _wait; }
+    bool IsHalt() const { return _halt; }
     bool HasIRQ() const { return _mem->GetUnibus()->HasIRG(); }
 
   private:

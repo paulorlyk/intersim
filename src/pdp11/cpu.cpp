@@ -99,26 +99,14 @@ enum _opcode {
   _wait_op    = 0x0001,   // WAIT     Wait for Interrupt
   _emt        = 0x8800,   // EMT      Emulator Trap
   _trap_op    = 0x8900,   // TRAP     Trap
+  _c_op       = 0x00A0,   // C        Clear selected condition code bits
+  _s_op       = 0x00B0,   // S        Set selected condition codes
+  _halt_op    = 0x0000,   // HALT     Halt
 
-  // 000000   HALT     Halt
   // 000003   BPT      Breakpoint Trap
   // 000004   IOT      I/O Trap
   // 000006   RTT      Return from Interrupt
   // 000007   MFPT     Move From Processor (PDP-11/44 ONLY)
-
-  // 000240   C        Clear selected condition code bits
-  // 000241   CLC      Clear C
-  // 000242   ClV      Clear V
-  // 000244   ClZ      Clear Z
-  // 000250   ClN      Clear N
-  // 000257   CCC      Clear all condition code bits
-
-  // 000260   S        Set selected condition codes
-  // 000261   SEC      Set C
-  // 000262   SEV      Set V
-  // 000264   SEZ      Set Z
-  // 000270   SEN      Set N
-  // 000277   SCC      Set all condition codes
 
   // 007000   CSM      Call to Supervisor Mode (PDP-11/44 only)
 
@@ -137,7 +125,8 @@ enum _instructionType {
   _instt_rts,
   _instt_spl,
   _instt_double_op_reg_src,
-  _instt_system
+  _instt_condition_code,
+  _instt_system,
 };
 
 struct _instruction{
@@ -149,6 +138,7 @@ struct _instruction{
   int dst;
   int reg;
   int offset;
+  int mask;
 };
 
 static void _initNameLUT() {
@@ -259,6 +249,9 @@ static void _initNameLUT() {
   __arrOpcodeNameLUT[_wait_op]= "WAIT";
   __arrOpcodeNameLUT[_emt]    = "EMT";
   __arrOpcodeNameLUT[_trap_op]= "TRAP";
+  __arrOpcodeNameLUT[_c_op]   = "C";
+  __arrOpcodeNameLUT[_s_op]   = "S";
+  __arrOpcodeNameLUT[_halt_op]= "HALT";
 }
 
 static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cpu_addr *pc, cpu_word PSW, Mem* mem, MMU* mmu) {
@@ -362,6 +355,10 @@ static const char* _formatInstruction(cpu_addr pc, cpu_word instWord, const stru
       pos += sprintf(res + pos, ", %s", __arrRegNameLUT[pInst->reg]);
       break;
 
+    case _instt_condition_code:
+      pos += sprintf(res + pos, " 0%03o", pInst->mask);
+      break;
+
     case _instt_system:
       break;
   }
@@ -458,6 +455,9 @@ bool CPU::Run() {
   //   _disassemblyOutput = true;
   //   DEBUG("debug");
   // }
+
+  if(_halt)
+    return false;
 
   if(_mmuTrap) {
     DEBUG("Processing MMU TRAP");
@@ -792,11 +792,31 @@ bool CPU::Run() {
         break;
     }
 
-    case _ror: assert(false);
-    case _rorb: assert(false);
+    case _ror:
+    case _rorb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        cpu_word res = (dstVal >> 1) | (PSW_GET_C(_PSW) << 15);
+        if(_store(dstAddr, res)) {
+          bool n = res & 0x8000;
+          bool c = dstVal & 1;
+          _setFlags(n, !res, n != c, c);
+        }
+      }
+      break;
+    }
 
-    case _rol: assert(false);
-    case _rolb: assert(false);
+    case _rol:
+    case _rolb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        uint32_t res = (dstVal << 1) | PSW_GET_C(_PSW);
+        if(_store(dstAddr, res)) {
+          bool n = res & 0x8000;
+          bool c = res & 0x10000;
+          _setFlags(n, !res, n != c, c);
+        }
+      }
+      break;
+    }
 
     case _asr:
     case _asrb: {
@@ -967,6 +987,11 @@ bool CPU::Run() {
       break;
     }
 
+    case _halt_op: {
+      _halt = true;
+      break;
+    }
+
     case _emt: {
       _trap(TRAP_EMT);
       break;
@@ -974,6 +999,26 @@ bool CPU::Run() {
 
     case _trap_op: {
       _trap(TRAP_TRAP);
+      break;
+    }
+
+    case _c_op: {
+      _setFlags(
+        PSW_GET_N(_PSW) && !(inst.mask & (1 << 0)),
+        PSW_GET_Z(_PSW) && !(inst.mask & (1 << 1)),
+        PSW_GET_V(_PSW) && !(inst.mask & (1 << 2)),
+        PSW_GET_C(_PSW) && !(inst.mask & (1 << 3))
+      );
+      break;
+    }
+
+    case _s_op: {
+      _setFlags(
+        PSW_GET_N(_PSW) || (inst.mask & (1 << 0)),
+        PSW_GET_Z(_PSW) || (inst.mask & (1 << 1)),
+        PSW_GET_V(_PSW) || (inst.mask & (1 << 2)),
+        PSW_GET_C(_PSW) || !(inst.mask & (1 << 3))
+      );
       break;
     }
 
@@ -1297,7 +1342,7 @@ bool CPU::_decode(cpu_word inst, struct _instruction *pInst) {
           pInst->opcode = (_opcode)(inst & 0xFFC0);
           pInst->dstMode = (CpuAddressingMode)((inst & 0x0038) >> 3);
           pInst->dst = (inst & 0x0007) >> 0;
-        } else if((inst & 0xFFF8) == 0x0080 || (inst & 0xFFF8) == 0x0098) { // 0000 0000 100I Ixxx; II = 0 || II == 3
+        } else if((inst & 0xFFF8) == 0x0080 || (inst & 0xFFF8) == 0x0098) { // 0000 0000 100I Ixxx; II == 0 || II == 3
           // RTS
           // SPL
           //  15                      3   2      0
@@ -1308,6 +1353,28 @@ bool CPU::_decode(cpu_word inst, struct _instruction *pInst) {
           pInst->type = (inst & 0xFFF8) == 0x0080 ? _instt_rts : _instt_spl;
           pInst->opcode = (_opcode)(inst & 0xFFF8);
           pInst->dst = (inst & 0x0007) >> 0;
+        } else if((inst & 0xFFF0) == 0x00A0 || (inst & 0xFFF0) == 0x00B0) { // 0000 0000 101I xxxx
+          // C
+          // CLC
+          // ClV
+          // ClZ
+          // ClN
+          // CCC
+          // S
+          // SEC
+          // SEV
+          // SEZ
+          // SEN
+          // SCC
+          //  15                    4   3  0
+          // [0 0 0 0 0 0 0 0 1 0 1 I] [Mask]
+
+          //DEBUG("Decoder: Condition code operator");
+
+          pInst->type = _instt_condition_code;
+          pInst->opcode = (_opcode)(inst & 0xFFF0);
+
+          pInst->mask = inst & 0x000F;
         } else {
           // System instructions
 
