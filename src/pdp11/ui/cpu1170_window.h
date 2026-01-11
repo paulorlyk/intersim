@@ -27,6 +27,8 @@ class CPU1170_window {
 
       auto psw = _cpu->Get_PSW();
       if(ImGui::CollapsingHeader(std::format("PSW: {:04x}", psw).c_str())) {
+        ImGui::Indent();
+
         ImGui::Text("C = %d", PSW_GET_C(psw));
         ImGui::Text("V = %d", PSW_GET_V(psw));
         ImGui::Text("Z = %d", PSW_GET_Z(psw));
@@ -36,6 +38,8 @@ class CPU1170_window {
         ImGui::Text("REG_SET = %d", PSW_GET_REG_SET(psw));
         ImGui::Text("PREV_MODE = %d", PSW_GET_PREV_MODE(psw));
         ImGui::Text("CUR_MODE = %d", PSW_GET_CUR_MODE(psw));
+
+        ImGui::Unindent();
       }
 
       for(int rs = 0; rs < 2; ++rs) {
