@@ -521,471 +521,470 @@ bool CPU::Run() {
 
   bool byteFlag = inst.opcode & 0x8000;
 
-    switch(inst.opcode) {
-      case _mov:
-      case _movb: {
-        if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
-           && _makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)
-           && _store(dstAddr, srcVal)) {
-            _setFlags(srcVal & 0x8000, !srcVal, 0, PSW_GET_C(_PSW));
-        }
-        break;
+  switch(inst.opcode) {
+    case _mov:
+    case _movb: {
+      if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
+         && _makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)
+         && _store(dstAddr, srcVal)) {
+        _setFlags(srcVal & 0x8000, !srcVal, 0, PSW_GET_C(_PSW));
       }
-
-      case _cmp:
-      case _cmpb: {
-        if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
-           && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          uint32_t res = (uint32_t)srcVal - dstVal;
-          _setFlags(res & 0x8000, !res, CALC_V(srcVal, dstVal, res), res & 0x10000);
-        }
-        break;
-      }
-
-      case _bit:
-      case _bitb: {
-        if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
-           && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          dstVal &= srcVal;
-          _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _bic:
-      case _bicb: {
-        if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
-           && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          dstVal &= ~srcVal;
-          if(_store(dstAddr, dstVal))
-            _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _bis:
-      case _bisb: {
-        if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
-           && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          dstVal |= srcVal;
-          if(_store(dstAddr, dstVal))
-            _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _add: {
-        if(   _load(inst.srcMode, inst.src, false, &srcAddr, &srcVal)
-           && _load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
-          uint32_t res = (uint32_t)srcVal + dstVal;
-          if(_store(dstAddr, res))
-            _setFlags(res & 0x8000, !res, CALC_V(srcVal, dstVal, res), res & 0x10000);
-        }
-        break;
-      }
-
-      case _sub: {
-        if(   _load(inst.srcMode, inst.src, false, &srcAddr, &srcVal)
-           && _load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
-          uint32_t res = (uint32_t)dstVal - srcVal;
-          if(_store(dstAddr, res))
-            _setFlags(res & 0x8000, !res, CALC_V(dstVal, srcVal, res), res & 0x10000);
-        }
-        break;
-      }
-
-      case _mul: {
-        if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
-          break;
-        dstVal = _GPR[inst.reg];
-
-        // Convert to signed integer
-        int32_t src = ((int32_t)(srcVal & 0x7FFF)) - ((int32_t)(srcVal & 0x8000));
-        int32_t dst = ((int32_t)(dstVal & 0x7FFF)) - ((int32_t)(dstVal & 0x8000));
-
-        int32_t mul = src * dst;
-        _GPR[inst.reg] = mul >> 16;
-        _GPR[inst.reg | 1] = mul;
-
-        _setFlags(mul & 0x80000000, !mul, 0, mul < -32768 || mul >= 32768);
-        break;
-      }
-
-      case _div: {
-        if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
-          break;
-
-        if(srcVal != 0) {
-          // Convert to signed integer
-          int32_t den = ((int32_t)(srcVal & 0x7FFF)) - ((int32_t)(srcVal & 0x8000));
-
-          // Assemble 32 bit value
-          uint32_t arg = _GPR[inst.reg | 1] | (((uint32_t)_GPR[inst.reg]) << 16);
-          // Convert to signed integer
-          int32_t num = ((int32_t)(arg & 0x7FFFFFFF)) - ((int32_t)(arg & 0x80000000ULL));
-
-          int32_t quot = num / den;
-          int32_t rem = num % den;
-          if(quot < 0x8000 && quot > -0x10000) {
-            _GPR[inst.reg] = quot & 0xFFFF;
-            _GPR[inst.reg | 1] = rem & 0xFFFF;
-
-            _setFlags(quot < 0, !quot, 0, 0);
-          } else {
-            _setFlags(0, 0, 1, 0);  // Result is unrepresentable in 16 bit register
-          }
-        } else {
-          _setFlags(0, 0, 1, 1);  // Division by 0
-        }
-        break;
-      }
-
-      case _ash: {
-        if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
-          break;
-
-        dstVal = _GPR[inst.reg];
-
-        // The shift bits count ranges from -32 (right shift)
-        // to +31 (left shift). Choose 64bit uints here to
-        // avoid undefined behavior while shifting.
-        uint64_t res = dstVal;
-        bool c = PSW_GET_C(_PSW);
-
-        if(srcVal & 0x0020) {
-          // Negative - right shift
-          int n = 0x0040 - (srcVal & 0x003F);
-          res >>= n;
-          if(dstVal & 0x8000)
-            res |= ~(0x7FFFULL >> n);
-          c = dstVal & (1ULL << (n - 1));
-        } else if(srcVal & 0x003F) {
-          // Positive - right shift
-          int n = srcVal & 0x003F;
-          res <<= n;
-          c = dstVal & (0x8000ULL >> (n - 1));
-        }
-
-        _GPR[inst.reg] = res;
-        _setFlags(res & 0x8000, !(res & 0xFFFF), (res ^ dstVal) & 0x8000, c);
-        break;
-      }
-
-      case _ashc: {
-        if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
-          break;
-
-        uint64_t dest = (((uint64_t)_GPR[inst.reg]) << 16) | _GPR[inst.reg | 1];
-
-        // The shift bits count ranges from -32 (right shift)
-        // to +31 (left shift). Choose 64bit uints here to
-        // avoid undefined behavior while shifting.
-        uint64_t res = dest;
-        bool c = PSW_GET_C(_PSW);
-
-        if(srcVal & 0x0020) {
-          // Negative - right shift
-          int n = 0x0040 - (srcVal & 0x003F);
-          res >>= n;
-          if(dest & 0x80000000)
-            res |= ~(0x7FFFFFFFULL >> n);
-          c = dest & (1ULL << (n - 1));
-        } else if(srcVal & 0x003F) {
-          // Positive - right shift
-          int n = srcVal & 0x003F;
-          res <<= n;
-          c = dest & (0x80000000ULL >> (n - 1));
-        }
-
-        _GPR[inst.reg] = res >> 16;
-        _GPR[inst.reg | 1] = res;
-
-        _setFlags(res & 0x80000000, !(res & 0xFFFFFFFF), (res ^ dest) & 0x80000000, c);
-        break;
-      }
-
-      case _xor: assert(false);
-
-      case _fp: assert(false);
-
-      case _sys: assert(false);
-
-      case _sob: {
-        --_GPR[inst.reg];
-        BRANCH_IF(_GPR[inst.reg], inst.offset);
-        break;
-      }
-
-      case _swab: {
-        if(_load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
-          cpu_word res = (dstVal << 8) | (dstVal >> 8);
-          if(_store(dstAddr, res))
-            _setFlags(res & 0x0080, !(res & 0xFF), 0, 0);
-        }
-        break;
-      }
-
-      case _clr:
-      case _clrb: {
-        if(    _makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr) && _store(dstAddr, 0)) {
-            _setFlags(0, 1, 0, 0);
-        }
-        break;
-      }
-
-      case _com: assert(false);
-      case _comb: assert(false);
-
-      case _inc:
-      case _incb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          ++dstVal;
-          if(_store(dstAddr, dstVal))
-            _setFlags(dstVal & 0x8000, !dstVal, dstVal == 0x8000, PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _dec:
-      case _decb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          --dstVal;
-          if(_store(dstAddr, dstVal))
-            _setFlags(dstVal & 0x8000, !dstVal, dstVal == 0x7FFF, PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _neg:
-      case _negb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          cpu_word res = ~dstVal + 1;
-          if(_store(dstAddr, res))
-            _setFlags(res & 0x8000, !res, res == 0x8000, res);
-        }
-        break;
-      }
-
-      case _adc:
-      case _adcb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          uint32_t res = (uint32_t)dstVal + PSW_GET_C(_PSW);
-          if(_store(dstAddr, res))
-            _setFlags(res & 0x8000, !res, dstVal == 0x7FFF && PSW_GET_C(_PSW), dstVal == 0xFFFF && PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _sbc:
-      case _sbcb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-            uint32_t res = (uint32_t)dstVal - PSW_GET_C(_PSW);
-            if(_store(dstAddr, res))
-              _setFlags(res & 0x8000, !res, res == 0x8000, res || !PSW_GET_C(_PSW));
-        }
-        break;
-      }
-
-      case _tst:
-      case _tstb: {
-          if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal))
-            _setFlags(dstVal & 0x8000, !dstVal, 0, 0);
-          break;
-      }
-
-      case _ror: assert(false);
-      case _rorb: assert(false);
-
-      case _rol: assert(false);
-      case _rolb: assert(false);
-
-      case _asr:
-      case _asrb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          cpu_word res = (dstVal >> 1) | (dstVal & 0x8000);
-          if(_store(dstAddr, res)) {
-            bool n = res & 0x8000;
-            bool c = dstVal & 1;
-            _setFlags(n, !res, n != c, c);
-          }
-        }
-        break;
-      }
-
-      case _asl:
-      case _aslb: {
-        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-          uint32_t res = (uint32_t)dstVal << 1;
-          if(_store(dstAddr, res)) {
-            bool n = res & 0x8000;
-            bool c = res & 0x10000;
-            _setFlags(n, !res, n != c, c);
-          }
-        }
-        break;
-      }
-
-      case _mark: assert(false);
-
-      case _mtps: assert(false);
-
-      case _mfpi: {
-        if(!_makeOperandAddress(inst.dstMode, inst.dst, false, &dstAddr))
-          break;
-
-        if(dstAddr & OPERAND_TYPE_REG) {
-          cpu_word psw = _PSW;
-          _setPSW(PSW_SET_CUR_MODE(psw, PSW_GET_PREV_MODE(psw)));
-          dstVal = _GPR[inst.dst];
-          _setPSW(psw);
-        } else if(!_read(dstAddr, false, cpu_space_I, PSW_GET_PREV_MODE(_PSW), &dstVal)) {
-          break;
-        }
-
-        if(_push(dstVal))
-          _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
-        break;
-      }
-
-      case _mfpd: assert(false);
-
-      case _mtpi: {
-        if(!_makeOperandAddress(inst.dstMode, inst.dst, false, &dstAddr) || !_pop(&dstVal))
-            break;
-
-        if(dstAddr & OPERAND_TYPE_REG) {
-          cpu_word psw = _PSW;
-          _setPSW(PSW_SET_CUR_MODE(psw, PSW_GET_PREV_MODE(psw)));
-          _GPR[inst.dst] = dstVal;
-          _setPSW(psw);
-        } else if(!_write(dstAddr, false, dstVal, cpu_space_I, PSW_GET_PREV_MODE(_PSW))) {
-          break;
-        }
-
-        _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
-        break;
-      }
-
-      case _mtpd: assert(false);
-
-      case _sxt: {
-        _GPR[inst.dst] = PSW_GET_N(_PSW) ? 0xFFFF : 0;
-        _setFlags(PSW_GET_N(_PSW), !PSW_GET_N(_PSW), 0, PSW_GET_C(_PSW));
-        break;
-      }
-
-      case _mfps: assert(false);
-
-      case _br:   BRANCH_IF(true,                                                     inst.offset); break;
-      case _bne:  BRANCH_IF(!PSW_GET_Z(_PSW),                                         inst.offset); break;
-      case _beq:  BRANCH_IF(PSW_GET_Z(_PSW),                                          inst.offset); break;
-      case _bge:  BRANCH_IF(PSW_GET_N(_PSW) == PSW_GET_V(_PSW),                       inst.offset); break;
-      case _blt:  BRANCH_IF(PSW_GET_N(_PSW) != PSW_GET_V(_PSW),                       inst.offset); break;
-      case _bgt:  BRANCH_IF(!PSW_GET_Z(_PSW) && (PSW_GET_N(_PSW) == PSW_GET_V(_PSW)), inst.offset); break;
-      case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) || (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
-      case _bpl:  BRANCH_IF(!PSW_GET_N(_PSW),                                         inst.offset); break;
-      case _bmi:  BRANCH_IF(PSW_GET_N(_PSW),                                          inst.offset); break;
-      case _bhi:  BRANCH_IF(!(PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW)),                   inst.offset); break;
-      case _blos: BRANCH_IF(PSW_GET_C(_PSW) || PSW_GET_Z(_PSW),                       inst.offset); break;
-      case _bvc:  BRANCH_IF(!PSW_GET_V(_PSW),                                         inst.offset); break;
-      case _bvs:  BRANCH_IF(PSW_GET_V(_PSW),                                          inst.offset); break;
-      case _bcc:  BRANCH_IF(!PSW_GET_C(_PSW),                                         inst.offset); break;
-      case _bcs:  BRANCH_IF(PSW_GET_C(_PSW),                                          inst.offset); break;
-
-      case _jmp: {
-        if(_makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)) {
-          if(dstAddr & OPERAND_TYPE_REG) {
-            // TODO: Illegal instruction trap
-            assert(false);
-          }
-          else
-            _GPR[7] = dstAddr;
-        }
-        break;
-      }
-
-      case _jsr: {
-        if(_makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)) {
-          if(dstAddr & OPERAND_TYPE_REG) {
-            // TODO: Illegal instruction trap
-            assert(false);
-          }
-          else if(_push(_GPR[inst.src])){
-            _GPR[inst.src] = _GPR[7];
-            _GPR[7] = dstAddr;
-          }
-        }
-        break;
-      }
-
-      case _rts: {
-        _GPR[7] = _GPR[inst.dst];
-        _pop(_GPR + inst.dst);
-        break;
-      }
-
-      case _reset: {
-        if(PSW_GET_CUR_MODE(_PSW) == CPU_MODE_KERNEL) {
-          _mmu.Reset();
-          _mem->Reset();
-        }
-        break;
-      }
-
-      case _spl: {
-        if(PSW_GET_CUR_MODE(_PSW) == CPU_MODE_KERNEL)
-          _setPSW(PSW_SET_PRIORITY(_PSW, inst.dst));
-        break;
-      }
-
-      case _rti: {
-        cpu_word PC;
-        cpu_word psw;
-        if(_pop(&PC) && _pop(&psw)) {
-          psw &= PSW_MASK;
-          if(PSW_GET_CUR_MODE(_PSW) != CPU_MODE_KERNEL) {
-            // When executed in Supervisor mode, the current and previous
-            // mode bits in the restored PS cannot be Kernel. When executed in
-            // User mode, the current and previous mode bits in the restored PS
-            // can only be User. RTI cannot clear PS<11> if it was already set.
-            // Apparently priority level is also not allowed to be lowered...
-            psw = (psw & 0xF81F) | (_PSW & 0xF8E0);
-          }
-
-          _GPR[7] = PC;
-          _setPSW(psw);
-
-          // TODO: T bit
-          assert(PSW_GET_TRAP(_PSW) == 0);
-        }
-
-        // DEBUG("RTI to 0%06o", cpu.GPR[7]);
-        break;
-      }
-
-      case _wait_op: {
-        _wait = true;
-        break;
-      }
-
-      case _emt: {
-        _trap(TRAP_EMT);
-        break;
-      }
-
-      case _trap_op: {
-        _trap(TRAP_TRAP);
-        break;
-      }
-
-      default: {
-        DEBUG("UNIMPLEMENTED INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
-        assert(false);
-        break;
-      }
+      break;
     }
 
-    return !_wait;
+    case _cmp:
+    case _cmpb: {
+      if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
+         && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        uint32_t res = (uint32_t)srcVal - dstVal;
+        _setFlags(res & 0x8000, !res, CALC_V(srcVal, dstVal, res), res & 0x10000);
+      }
+      break;
+    }
+
+    case _bit:
+    case _bitb: {
+      if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
+         && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        dstVal &= srcVal;
+        _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _bic:
+    case _bicb: {
+      if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
+         && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        dstVal &= ~srcVal;
+        if(_store(dstAddr, dstVal))
+          _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _bis:
+    case _bisb: {
+      if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
+         && _load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        dstVal |= srcVal;
+        if(_store(dstAddr, dstVal))
+          _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _add: {
+      if(   _load(inst.srcMode, inst.src, false, &srcAddr, &srcVal)
+         && _load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
+        uint32_t res = (uint32_t)srcVal + dstVal;
+        if(_store(dstAddr, res))
+          _setFlags(res & 0x8000, !res, CALC_V(srcVal, dstVal, res), res & 0x10000);
+      }
+      break;
+    }
+
+    case _sub: {
+      if(   _load(inst.srcMode, inst.src, false, &srcAddr, &srcVal)
+         && _load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
+        uint32_t res = (uint32_t)dstVal - srcVal;
+        if(_store(dstAddr, res))
+          _setFlags(res & 0x8000, !res, CALC_V(dstVal, srcVal, res), res & 0x10000);
+      }
+      break;
+    }
+
+    case _mul: {
+      if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
+        break;
+      dstVal = _GPR[inst.reg];
+
+      // Convert to signed integer
+      int32_t src = ((int32_t)(srcVal & 0x7FFF)) - ((int32_t)(srcVal & 0x8000));
+      int32_t dst = ((int32_t)(dstVal & 0x7FFF)) - ((int32_t)(dstVal & 0x8000));
+
+      int32_t mul = src * dst;
+      _GPR[inst.reg] = mul >> 16;
+      _GPR[inst.reg | 1] = mul;
+
+      _setFlags(mul & 0x80000000, !mul, 0, mul < -32768 || mul >= 32768);
+      break;
+    }
+
+    case _div: {
+      if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
+        break;
+
+      if(srcVal != 0) {
+        // Convert to signed integer
+        int32_t den = ((int32_t)(srcVal & 0x7FFF)) - ((int32_t)(srcVal & 0x8000));
+
+        // Assemble 32 bit value
+        uint32_t arg = _GPR[inst.reg | 1] | (((uint32_t)_GPR[inst.reg]) << 16);
+        // Convert to signed integer
+        int32_t num = ((int32_t)(arg & 0x7FFFFFFF)) - ((int32_t)(arg & 0x80000000ULL));
+
+        int32_t quot = num / den;
+        int32_t rem = num % den;
+        if(quot < 0x8000 && quot > -0x10000) {
+          _GPR[inst.reg] = quot & 0xFFFF;
+          _GPR[inst.reg | 1] = rem & 0xFFFF;
+
+          _setFlags(quot < 0, !quot, 0, 0);
+        } else {
+          _setFlags(0, 0, 1, 0);  // Result is unrepresentable in 16 bit register
+        }
+      } else {
+        _setFlags(0, 0, 1, 1);  // Division by 0
+      }
+      break;
+    }
+
+    case _ash: {
+      if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
+        break;
+
+      dstVal = _GPR[inst.reg];
+
+      // The shift bits count ranges from -32 (right shift)
+      // to +31 (left shift). Choose 64bit uints here to
+      // avoid undefined behavior while shifting.
+      uint64_t res = dstVal;
+      bool c = PSW_GET_C(_PSW);
+
+      if(srcVal & 0x0020) {
+        // Negative - right shift
+        int n = 0x0040 - (srcVal & 0x003F);
+        res >>= n;
+        if(dstVal & 0x8000)
+          res |= ~(0x7FFFULL >> n);
+        c = dstVal & (1ULL << (n - 1));
+      } else if(srcVal & 0x003F) {
+        // Positive - right shift
+        int n = srcVal & 0x003F;
+        res <<= n;
+        c = dstVal & (0x8000ULL >> (n - 1));
+      }
+
+      _GPR[inst.reg] = res;
+      _setFlags(res & 0x8000, !(res & 0xFFFF), (res ^ dstVal) & 0x8000, c);
+      break;
+    }
+
+    case _ashc: {
+      if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
+        break;
+
+      uint64_t dest = (((uint64_t)_GPR[inst.reg]) << 16) | _GPR[inst.reg | 1];
+
+      // The shift bits count ranges from -32 (right shift)
+      // to +31 (left shift). Choose 64bit uints here to
+      // avoid undefined behavior while shifting.
+      uint64_t res = dest;
+      bool c = PSW_GET_C(_PSW);
+
+      if(srcVal & 0x0020) {
+        // Negative - right shift
+        int n = 0x0040 - (srcVal & 0x003F);
+        res >>= n;
+        if(dest & 0x80000000)
+          res |= ~(0x7FFFFFFFULL >> n);
+        c = dest & (1ULL << (n - 1));
+      } else if(srcVal & 0x003F) {
+        // Positive - right shift
+        int n = srcVal & 0x003F;
+        res <<= n;
+        c = dest & (0x80000000ULL >> (n - 1));
+      }
+
+      _GPR[inst.reg] = res >> 16;
+      _GPR[inst.reg | 1] = res;
+
+      _setFlags(res & 0x80000000, !(res & 0xFFFFFFFF), (res ^ dest) & 0x80000000, c);
+      break;
+    }
+
+    case _xor: assert(false);
+
+    case _fp: assert(false);
+
+    case _sys: assert(false);
+
+    case _sob: {
+      --_GPR[inst.reg];
+      BRANCH_IF(_GPR[inst.reg], inst.offset);
+      break;
+    }
+
+    case _swab: {
+      if(_load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
+        cpu_word res = (dstVal << 8) | (dstVal >> 8);
+        if(_store(dstAddr, res))
+          _setFlags(res & 0x0080, !(res & 0xFF), 0, 0);
+      }
+      break;
+    }
+
+    case _clr:
+    case _clrb: {
+      if(_makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr) && _store(dstAddr, 0))
+        _setFlags(0, 1, 0, 0);
+      break;
+    }
+
+    case _com: assert(false);
+    case _comb: assert(false);
+
+    case _inc:
+    case _incb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        ++dstVal;
+        if(_store(dstAddr, dstVal))
+          _setFlags(dstVal & 0x8000, !dstVal, dstVal == 0x8000, PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _dec:
+    case _decb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        --dstVal;
+        if(_store(dstAddr, dstVal))
+          _setFlags(dstVal & 0x8000, !dstVal, dstVal == 0x7FFF, PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _neg:
+    case _negb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        cpu_word res = ~dstVal + 1;
+        if(_store(dstAddr, res))
+          _setFlags(res & 0x8000, !res, res == 0x8000, res);
+      }
+      break;
+    }
+
+    case _adc:
+    case _adcb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        uint32_t res = (uint32_t)dstVal + PSW_GET_C(_PSW);
+        if(_store(dstAddr, res))
+          _setFlags(res & 0x8000, !res, dstVal == 0x7FFF && PSW_GET_C(_PSW), dstVal == 0xFFFF && PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _sbc:
+    case _sbcb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        uint32_t res = (uint32_t)dstVal - PSW_GET_C(_PSW);
+        if(_store(dstAddr, res))
+          _setFlags(res & 0x8000, !res, res == 0x8000, res || !PSW_GET_C(_PSW));
+      }
+      break;
+    }
+
+    case _tst:
+    case _tstb: {
+        if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal))
+          _setFlags(dstVal & 0x8000, !dstVal, 0, 0);
+        break;
+    }
+
+    case _ror: assert(false);
+    case _rorb: assert(false);
+
+    case _rol: assert(false);
+    case _rolb: assert(false);
+
+    case _asr:
+    case _asrb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        cpu_word res = (dstVal >> 1) | (dstVal & 0x8000);
+        if(_store(dstAddr, res)) {
+          bool n = res & 0x8000;
+          bool c = dstVal & 1;
+          _setFlags(n, !res, n != c, c);
+        }
+      }
+      break;
+    }
+
+    case _asl:
+    case _aslb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        uint32_t res = (uint32_t)dstVal << 1;
+        if(_store(dstAddr, res)) {
+          bool n = res & 0x8000;
+          bool c = res & 0x10000;
+          _setFlags(n, !res, n != c, c);
+        }
+      }
+      break;
+    }
+
+    case _mark: assert(false);
+
+    case _mtps: assert(false);
+
+    case _mfpi: {
+      if(!_makeOperandAddress(inst.dstMode, inst.dst, false, &dstAddr))
+        break;
+
+      if(dstAddr & OPERAND_TYPE_REG) {
+        cpu_word psw = _PSW;
+        _setPSW(PSW_SET_CUR_MODE(psw, PSW_GET_PREV_MODE(psw)));
+        dstVal = _GPR[inst.dst];
+        _setPSW(psw);
+      } else if(!_read(dstAddr, false, cpu_space_I, PSW_GET_PREV_MODE(_PSW), &dstVal)) {
+        break;
+      }
+
+      if(_push(dstVal))
+        _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
+      break;
+    }
+
+    case _mfpd: assert(false);
+
+    case _mtpi: {
+      if(!_makeOperandAddress(inst.dstMode, inst.dst, false, &dstAddr) || !_pop(&dstVal))
+        break;
+
+      if(dstAddr & OPERAND_TYPE_REG) {
+        cpu_word psw = _PSW;
+        _setPSW(PSW_SET_CUR_MODE(psw, PSW_GET_PREV_MODE(psw)));
+        _GPR[inst.dst] = dstVal;
+        _setPSW(psw);
+      } else if(!_write(dstAddr, false, dstVal, cpu_space_I, PSW_GET_PREV_MODE(_PSW))) {
+        break;
+      }
+
+      _setFlags(dstVal & 0x8000, !dstVal, 0, PSW_GET_C(_PSW));
+      break;
+    }
+
+    case _mtpd: assert(false);
+
+    case _sxt: {
+      _GPR[inst.dst] = PSW_GET_N(_PSW) ? 0xFFFF : 0;
+      _setFlags(PSW_GET_N(_PSW), !PSW_GET_N(_PSW), 0, PSW_GET_C(_PSW));
+      break;
+    }
+
+    case _mfps: assert(false);
+
+    case _br:   BRANCH_IF(true,                                                     inst.offset); break;
+    case _bne:  BRANCH_IF(!PSW_GET_Z(_PSW),                                         inst.offset); break;
+    case _beq:  BRANCH_IF(PSW_GET_Z(_PSW),                                          inst.offset); break;
+    case _bge:  BRANCH_IF(PSW_GET_N(_PSW) == PSW_GET_V(_PSW),                       inst.offset); break;
+    case _blt:  BRANCH_IF(PSW_GET_N(_PSW) != PSW_GET_V(_PSW),                       inst.offset); break;
+    case _bgt:  BRANCH_IF(!PSW_GET_Z(_PSW) && (PSW_GET_N(_PSW) == PSW_GET_V(_PSW)), inst.offset); break;
+    case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) || (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
+    case _bpl:  BRANCH_IF(!PSW_GET_N(_PSW),                                         inst.offset); break;
+    case _bmi:  BRANCH_IF(PSW_GET_N(_PSW),                                          inst.offset); break;
+    case _bhi:  BRANCH_IF(!(PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW)),                   inst.offset); break;
+    case _blos: BRANCH_IF(PSW_GET_C(_PSW) || PSW_GET_Z(_PSW),                       inst.offset); break;
+    case _bvc:  BRANCH_IF(!PSW_GET_V(_PSW),                                         inst.offset); break;
+    case _bvs:  BRANCH_IF(PSW_GET_V(_PSW),                                          inst.offset); break;
+    case _bcc:  BRANCH_IF(!PSW_GET_C(_PSW),                                         inst.offset); break;
+    case _bcs:  BRANCH_IF(PSW_GET_C(_PSW),                                          inst.offset); break;
+
+    case _jmp: {
+      if(_makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)) {
+        if(dstAddr & OPERAND_TYPE_REG) {
+          // TODO: Illegal instruction trap
+          assert(false);
+        } else {
+          _GPR[7] = dstAddr;
+        }
+      }
+      break;
+    }
+
+    case _jsr: {
+      if(_makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)) {
+        if(dstAddr & OPERAND_TYPE_REG) {
+          // TODO: Illegal instruction trap
+          assert(false);
+        }
+        else if(_push(_GPR[inst.src])){
+          _GPR[inst.src] = _GPR[7];
+          _GPR[7] = dstAddr;
+        }
+      }
+      break;
+    }
+
+    case _rts: {
+      _GPR[7] = _GPR[inst.dst];
+      _pop(_GPR + inst.dst);
+      break;
+    }
+
+    case _reset: {
+      if(PSW_GET_CUR_MODE(_PSW) == CPU_MODE_KERNEL) {
+        _mmu.Reset();
+        _mem->Reset();
+      }
+      break;
+    }
+
+    case _spl: {
+      if(PSW_GET_CUR_MODE(_PSW) == CPU_MODE_KERNEL)
+        _setPSW(PSW_SET_PRIORITY(_PSW, inst.dst));
+      break;
+    }
+
+    case _rti: {
+      cpu_word PC;
+      cpu_word psw;
+      if(_pop(&PC) && _pop(&psw)) {
+        psw &= PSW_MASK;
+        if(PSW_GET_CUR_MODE(_PSW) != CPU_MODE_KERNEL) {
+          // When executed in Supervisor mode, the current and previous
+          // mode bits in the restored PS cannot be Kernel. When executed in
+          // User mode, the current and previous mode bits in the restored PS
+          // can only be User. RTI cannot clear PS<11> if it was already set.
+          // Apparently priority level is also not allowed to be lowered...
+          psw = (psw & 0xF81F) | (_PSW & 0xF8E0);
+        }
+
+        _GPR[7] = PC;
+        _setPSW(psw);
+
+        // TODO: T bit
+        assert(PSW_GET_TRAP(_PSW) == 0);
+      }
+
+      // DEBUG("RTI to 0%06o", cpu.GPR[7]);
+      break;
+    }
+
+    case _wait_op: {
+      _wait = true;
+      break;
+    }
+
+    case _emt: {
+      _trap(TRAP_EMT);
+      break;
+    }
+
+    case _trap_op: {
+      _trap(TRAP_TRAP);
+      break;
+    }
+
+    default: {
+      DEBUG("UNIMPLEMENTED INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
+      assert(false);
+      break;
+    }
+  }
+
+  return !_wait;
 }
 
 void CPU::_trap(cpu_word vec) {
