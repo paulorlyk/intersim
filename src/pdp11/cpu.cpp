@@ -496,6 +496,11 @@ bool CPU::Run() {
   if(!_fetchPC(&instWord))
     return !_wait;
 
+  // if(instWord == 005067) {
+  //   _disassemblyOutput = true;
+  //   DEBUG("debug");
+  // }
+
   // DEBUG("Instruction fetch: 0%06o: 0%06o", _GPR[7] - 2, instWord);
 
   _instruction inst = {};
@@ -1026,8 +1031,8 @@ bool CPU::Run() {
 
     case _mfpt_op: {
       // PDP-11/44 only
-      DEBUG("ILLEGAL INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
-      _trap(TRAP_ILL);
+      DEBUG("MFPT INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
+      _trap(TRAP_RESERVED_INSTRUCTION);
       break;
     }
 

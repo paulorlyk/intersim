@@ -102,7 +102,6 @@ enum CpuAddressingMode {
 #define PSW_MASK 0xF8FF
 
 #define TRAP_ERR                    04
-#define TRAP_ILL                    04
 #define TRAP_RESERVED_INSTRUCTION   010
 #define TRAP_EMT                    030
 #define TRAP_TRAP                   034
