@@ -111,8 +111,9 @@ cpu_word MMU::Read(un_addr addr) {
   }
 }
 
-void MMU::Write(un_addr addr, cpu_word data) {
-  assert(!(addr & 1));
+void MMU::Write(un_addr addr, cpu_word data, cpu_word mask) {
+  assert((addr & 1) == 0);
+  assert(mask == 0xFFFF);
 
   for(auto &rg : _mmuGegGroupsTablePDR) {
     if(addr >= rg.start && addr < (rg.start + rg.size)) {

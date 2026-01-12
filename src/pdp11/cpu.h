@@ -102,6 +102,7 @@ enum CpuAddressingMode {
 #define PSW_MASK 0xF8FF
 
 #define TRAP_ERR                    04
+#define TRAP_ILL                    04
 #define TRAP_RESERVED_INSTRUCTION   010
 #define TRAP_EMT                    030
 #define TRAP_TRAP                   034
@@ -114,7 +115,7 @@ class CPU : public UnibusDevice {
 
     void Reset() override;
     cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data) override;
+    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
     cpu_word IrqAck() override;
 
     bool Run();
@@ -155,6 +156,7 @@ class CPU : public UnibusDevice {
     cpu_word _lastSP[4] = {};
 
     bool _wait = false;
+    bool _halt = false;
 
     bool _inTrap = false;
 

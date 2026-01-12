@@ -150,7 +150,7 @@ class DL11_window {
           _buf.pop_back();
       } else if(isspace(ch)) {
         _buf += ch;
-      } else {
+      } else if(ch != '\0') {
         _buf += _printCharacter(ch);
       }
 

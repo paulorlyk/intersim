@@ -119,9 +119,8 @@ int main() {
   CPU cpu(&mem, _bootstrapBase);
 
   if(!rk11.LoadDisk("img/unix_v5_rk/unix_v5_rk.dsk", 0))
-  // if(!rk11.LoadDisk("img/rk3-XXDP.dsk", 0))
+  // if(!rk11.LoadDisk("img/xxdp/rk11-XXDP.dsk", 0))
     return EXIT_FAILURE;
-  // rk11.ConnectDisk(1, true);
 
   CPU1170_window cpu1170_window(&cpu);
   MMU_window mmu_window(cpu.GetMMU());

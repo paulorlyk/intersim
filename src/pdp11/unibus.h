@@ -55,7 +55,7 @@ class RAM {
     void Poke(ph_addr base, const uint8_t* buf, ph_size size);
 
     data_status_t Read(ph_addr addr);
-    data_status_t Write(ph_addr addr, bool bByte, cpu_word data);
+    data_status_t Write(ph_addr addr, cpu_word data, cpu_word mask);
 
   private:
     cpu_word _mem[MEM_SIZE_WORDS] = {};
@@ -79,10 +79,13 @@ class UnibusDevice {
 
     virtual void Reset() = 0;
     virtual cpu_word Read(un_addr addr) = 0;
-    virtual void Write(un_addr addr, cpu_word data) = 0;
+    virtual void Write(un_addr addr, cpu_word data, cpu_word mask) = 0;
     virtual cpu_word IrqAck() = 0;
 
     const char* GetName() const { return _name; }
+
+  public:
+    static cpu_word AugmentData(cpu_word data, cpu_word val, cpu_word mask);
 
   protected:
     std::vector<IoWindow> _ioMap;
@@ -98,7 +101,7 @@ class Unibus {
     {}
 
     data_status_t Read(un_addr addr);
-    data_status_t Write(un_addr addr, bool bByte, cpu_word data);
+    data_status_t Write(un_addr addr, cpu_word data, cpu_word mask);
 
     void RegisterDevice(UnibusDevice* dev);
     void UnregisterDevice(UnibusDevice* dev);

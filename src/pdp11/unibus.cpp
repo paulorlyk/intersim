@@ -24,23 +24,19 @@ data_status_t RAM::Read(ph_addr addr) {
   return _mem[addr >> 1];
 }
 
-data_status_t RAM::Write(ph_addr addr, bool bByte, cpu_word data) {
-  assert(bByte || (addr & 1) == 0);
+data_status_t RAM::Write(ph_addr addr, cpu_word data, cpu_word mask) {
+  assert((addr & 1) == 0);
 
   if(addr >= MEM_SIZE_BYTES)
     return MEM_ERR(MEM_ERR_NX_MEM);
 
-  if(bByte) {
-    auto sh = (8 * (addr & 1U));
-    const cpu_word mask = 0xFF << sh;
-
-    const cpu_word w = _mem[addr >> 1];
-    data = (((data & 0xFF) << sh) & mask) | (w & ~mask);
-  }
-
-  _mem[addr >> 1] = data;
+  _mem[addr >> 1] = UnibusDevice::AugmentData(data, _mem[addr >> 1], mask);
 
   return 0;
+}
+
+cpu_word UnibusDevice::AugmentData(cpu_word data, cpu_word val, cpu_word mask) {
+  return (data & mask) | (val & ~mask);
 }
 
 data_status_t Unibus::Read(un_addr addr) {
@@ -63,17 +59,14 @@ data_status_t Unibus::Read(un_addr addr) {
   return io->Read(addr);
 }
 
-data_status_t Unibus::Write(un_addr addr, bool bByte, cpu_word data) {
-  assert(bByte || (addr & 1) == 0);
+data_status_t Unibus::Write(un_addr addr, cpu_word data, cpu_word mask) {
+  assert((addr & 1) == 0);
 
   assert(addr <= MEM_UNIBUS_ADDR_MAX);    // TODO: Debug
   addr &= MEM_UNIBUS_ADDR_MAX;
 
   if(addr < MEM_UNIBUS_PERIPH_PAGE_ADDR)
-    return _ram->Write(addr, bByte, data);
-
-  // TODO: Trap?
-  assert(!bByte);
+    return _ram->Write(addr, data, mask);
 
   //DEBUG("UNIBUS: I/O write: 0%06o -> addr 0%06o", data, addr);
 
@@ -83,7 +76,7 @@ data_status_t Unibus::Write(un_addr addr, bool bByte, cpu_word data) {
     return MEM_ERR(MEM_ERR_UNB_TIMEOUT);
   }
 
-  io->Write(addr, data);
+  io->Write(addr, data, mask);
 
   return 0;
 }

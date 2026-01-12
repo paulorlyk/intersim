@@ -10,7 +10,7 @@
 // RK11
 // Moving head disk drive controller
 
-#define CONFIG_RK11_NO_DELAYS   1
+#define CONFIG_RK11_NO_DELAYS
 
 #define RK11_NREGS 8
 
@@ -169,7 +169,7 @@ class RK11 : public Device {
 
     void Reset() override;
     cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data) override;
+    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
     cpu_word IrqAck() override;
 
     bool ConnectDisk(int nDisk, bool connected);

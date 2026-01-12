@@ -79,7 +79,7 @@ class MMU : public UnibusDevice {
 
     void Reset() override;
     cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data) override;
+    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
     cpu_word IrqAck() override;
 
     void UpdateMMR0(bool bInstCompleted);

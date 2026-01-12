@@ -121,10 +121,11 @@ cpu_word RK11::Read(un_addr addr) {
   return _regs[reg];
 }
 
-void RK11::Write(un_addr addr, cpu_word data) {
+void RK11::Write(un_addr addr, cpu_word data, cpu_word mask) {
+  assert((addr & 1) == 0);
   assert(addr >= RK11_PERIPH_START);
   assert(addr < RK11_PERIPH_START + (RK11_NREGS * MEM_WORD_SIZE));
-  assert((addr & 1) == 0);
+  assert(mask == 0xFFFF);
 
   switch(addr) {
     case RK11_REG_RKCS: {
@@ -491,7 +492,7 @@ void RK11::_runFunction() {
         // DEBUG("RK11: Reading %u words from disk [img 0x%06X] to memory location 0%06o", nWordsCount, nDiskWord * 2, addr);
 
         for(; nWordsDone < nWordsCount; ++nWordsDone) {
-          if(_bus->Write(addr, false, *data++) & MEM_HAS_ERR) {
+          if(_bus->Write(addr, *data++, 0xFFFF) & MEM_HAS_ERR) {
             _regs[RK11_RKER] |= RK11_RKER_NXM;
             break;
           }

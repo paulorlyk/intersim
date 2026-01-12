@@ -23,7 +23,7 @@ class KW11 : public Device {
 
     void Reset() override;
     cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data) override;
+    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
     cpu_word IrqAck() override;
 
     cpu_word Get_SR() const { return _SR; }

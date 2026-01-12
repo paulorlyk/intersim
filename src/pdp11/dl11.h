@@ -14,7 +14,7 @@
 // DL11
 // Asynchronous line interface
 
-#define DL11_XMIT_TIME_MS 1
+// #define DL11_XMIT_TIME_US 1000
 
 #define DL11_NREGS 4
 
@@ -100,7 +100,7 @@ class DL11 : public Device {
 
     void Reset() override;
     cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data) override;
+    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
     cpu_word IrqAck() override;
 
     void SetOnTx(const std::function<void(char ch)>& onTx) { _onTx = onTx; };

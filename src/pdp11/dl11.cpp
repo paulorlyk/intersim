@@ -70,16 +70,18 @@ cpu_word DL11::Read(un_addr addr) {
   return res;
 }
 
-void DL11::Write(un_addr addr, cpu_word data) {
+void DL11::Write(un_addr addr, cpu_word data, cpu_word mask) {
+  assert((addr & 1) == 0);
   assert(addr >= _baseAddr);
   assert(addr < _baseAddr + (DL11_NREGS * MEM_WORD_SIZE));
-  assert((addr & 1) == 0);
 
   auto reg = (addr - _baseAddr) >> 1;
 
   switch(reg) {
     case DL11_RCSR: {
       // DEBUG("DL11: Writing RCSR: 0%06o", data);
+
+      data = AugmentData(data, _regs[DL11_RCSR], mask);
 
       assert(!(data & DL11_RCSR_DATASET_INT_ENB));
 
@@ -106,6 +108,8 @@ void DL11::Write(un_addr addr, cpu_word data) {
     case DL11_XCSR: {
       // DEBUG("DL11: Writing XCSR: 0%06o", data);
 
+      data = AugmentData(data, _regs[DL11_XCSR], mask);
+
       _regs[DL11_XCSR] = (_regs[DL11_XCSR] & ~DL11_XCSR_WR_MASK) | (data & DL11_XCSR_WR_MASK);
 
       if(data & DL11_XCSR_MAINT) {
@@ -119,6 +123,8 @@ void DL11::Write(un_addr addr, cpu_word data) {
 
     case DL11_XBUF: {
       // DEBUG("DL11: Writing XBUF: 0%06o", data);
+
+      data = AugmentData(data, _regs[DL11_XBUF], mask);
 
       DL11_XBUF_SET_DATA(_regs[DL11_XBUF], data);
 
@@ -172,7 +178,7 @@ bool DL11::_runReceiver(char ch) {
 
   _regs[DL11_RCSR] |= DL11_RCSR_RCVR_ACT;
 
-  _rxTask = _ts->SetTimeout([this, ch]() {
+  auto cb = [this, ch]() {
     _rxTask = TS_NULL_TASK;
 
     // When new character received all error bits are cleared.
@@ -192,7 +198,13 @@ bool DL11::_runReceiver(char ch) {
     _regs[DL11_RCSR] |= DL11_RCSR_RCVR_DONE;
 
     _updateInterrupts();
-  }, DL11_XMIT_TIME_MS * TS_MILLISECONDS);
+  };
+
+#ifdef DL11_XMIT_TIME_US
+  _rxTask = _ts->SetTimeout(cb, DL11_XMIT_TIME_US * TS_MICROSECONDS);
+#else
+  cb();
+#endif
 
   return true;
 }
@@ -207,7 +219,8 @@ void DL11::_runTransmitter() {
   _regs[DL11_XCSR] &= ~DL11_XCSR_XMIT_RDY;
 
   const char ch = DL11_XBUF_GET_DATA(_regs[DL11_XBUF]);
-  _txTask = _ts->SetTimeout([this, ch]() {
+
+  auto cb = [this, ch]() {
     _txTask = TS_NULL_TASK;
 
     if(!(_regs[DL11_XCSR] & DL11_XCSR_MAINT) && _onTx)
@@ -218,7 +231,13 @@ void DL11::_runTransmitter() {
       _runTransmitter();
     else
       _updateInterrupts();
-  }, DL11_XMIT_TIME_MS * TS_MILLISECONDS);
+  };
+
+#ifdef DL11_XMIT_TIME_US
+  _txTask = _ts->SetTimeout(cb, DL11_XMIT_TIME_US * TS_MICROSECONDS);
+#else
+  cb();
+#endif
 
   if(_regs[DL11_XCSR] & DL11_XCSR_MAINT)
     _runReceiver(ch);

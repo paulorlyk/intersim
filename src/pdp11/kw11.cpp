@@ -45,9 +45,10 @@ cpu_word KW11::Read(un_addr addr) {
   return _SR;
 }
 
-void KW11::Write(un_addr addr, cpu_word data) {
-  assert(addr == KW11_ADDR);
+void KW11::Write(un_addr addr, cpu_word data, cpu_word mask) {
   assert((addr & 1) == 0);
+  assert(addr == KW11_ADDR);
+  assert(mask == 0xFFFF);
 
   _SR = data & KW11_SR_MASK;
 

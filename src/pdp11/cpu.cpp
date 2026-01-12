@@ -102,11 +102,11 @@ enum _opcode {
   _c_op       = 0x00A0,   // C        Clear selected condition code bits
   _s_op       = 0x00B0,   // S        Set selected condition codes
   _halt_op    = 0x0000,   // HALT     Halt
+  _mfpt_op    = 0x0007,   // MFPT     Move From Processor (PDP-11/44 ONLY)
 
   // 000003   BPT      Breakpoint Trap
   // 000004   IOT      I/O Trap
   // 000006   RTT      Return from Interrupt
-  // 000007   MFPT     Move From Processor (PDP-11/44 ONLY)
 
   // 007000   CSM      Call to Supervisor Mode (PDP-11/44 only)
 
@@ -252,6 +252,7 @@ static void _initNameLUT() {
   __arrOpcodeNameLUT[_c_op]   = "C";
   __arrOpcodeNameLUT[_s_op]   = "S";
   __arrOpcodeNameLUT[_halt_op]= "HALT";
+  __arrOpcodeNameLUT[_mfpt_op]= "MFPT";
 }
 
 static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cpu_addr *pc, cpu_word PSW, Mem* mem, MMU* mmu) {
@@ -423,8 +424,9 @@ cpu_word CPU::Read(un_addr addr) {
   return 0;
 }
 
-void CPU::Write(un_addr addr, cpu_word data) {
-  assert(!(addr & 1));
+void CPU::Write(un_addr addr, cpu_word data, cpu_word mask) {
+  assert((addr & 1) == 0);
+  assert(mask == 0xFFFF);
 
   switch(addr) {
     default:
@@ -506,11 +508,11 @@ bool CPU::Run() {
 
   // TODO: Debug
   if(_disassemblyOutput) {
-    static int ctr = -19;
+    static int ctr = 0;
     DEBUG("%d %s", ctr++, _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
 
-    if(ctr >= 2000)
-      DEBUG("debug");
+    // if(ctr >= 2000)
+    //   DEBUG("debug");
   }
 
   cpu_word srcVal = 0;
@@ -900,12 +902,12 @@ bool CPU::Run() {
     case _beq:  BRANCH_IF(PSW_GET_Z(_PSW),                                          inst.offset); break;
     case _bge:  BRANCH_IF(PSW_GET_N(_PSW) == PSW_GET_V(_PSW),                       inst.offset); break;
     case _blt:  BRANCH_IF(PSW_GET_N(_PSW) != PSW_GET_V(_PSW),                       inst.offset); break;
-    case _bgt:  BRANCH_IF(!PSW_GET_Z(_PSW) && (PSW_GET_N(_PSW) == PSW_GET_V(_PSW)), inst.offset); break;
-    case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) || (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
+    case _bgt:  BRANCH_IF(PSW_GET_Z(_PSW) == (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
+    case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) != (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
     case _bpl:  BRANCH_IF(!PSW_GET_N(_PSW),                                         inst.offset); break;
     case _bmi:  BRANCH_IF(PSW_GET_N(_PSW),                                          inst.offset); break;
     case _bhi:  BRANCH_IF(!PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW),                     inst.offset); break;
-    case _blos: BRANCH_IF(PSW_GET_C(_PSW) || PSW_GET_Z(_PSW),                       inst.offset); break;
+    case _blos: BRANCH_IF(PSW_GET_C(_PSW) != PSW_GET_Z(_PSW),                       inst.offset); break;
     case _bvc:  BRANCH_IF(!PSW_GET_V(_PSW),                                         inst.offset); break;
     case _bvs:  BRANCH_IF(PSW_GET_V(_PSW),                                          inst.offset); break;
     case _bcc:  BRANCH_IF(!PSW_GET_C(_PSW),                                         inst.offset); break;
@@ -1019,6 +1021,13 @@ bool CPU::Run() {
         PSW_GET_V(_PSW) || (inst.mask & (1 << 2)),
         PSW_GET_C(_PSW) || !(inst.mask & (1 << 3))
       );
+      break;
+    }
+
+    case _mfpt_op: {
+      // PDP-11/44 only
+      DEBUG("ILLEGAL INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
+      _trap(TRAP_ILL);
       break;
     }
 
