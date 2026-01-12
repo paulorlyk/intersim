@@ -178,7 +178,7 @@ bool DL11::_runReceiver(char ch) {
 
   _regs[DL11_RCSR] |= DL11_RCSR_RCVR_ACT;
 
-  auto cb = [this, ch]() {
+  _rxTask = _ts->SetTimeout([this, ch]() {
     _rxTask = TS_NULL_TASK;
 
     // When new character received all error bits are cleared.
@@ -198,13 +198,7 @@ bool DL11::_runReceiver(char ch) {
     _regs[DL11_RCSR] |= DL11_RCSR_RCVR_DONE;
 
     _updateInterrupts();
-  };
-
-#ifdef DL11_XMIT_TIME_US
-  _rxTask = _ts->SetTimeout(cb, DL11_XMIT_TIME_US * TS_MICROSECONDS);
-#else
-  cb();
-#endif
+  }, DL11_XMIT_TIME_US * TS_MICROSECONDS);
 
   return true;
 }
@@ -220,7 +214,7 @@ void DL11::_runTransmitter() {
 
   const char ch = DL11_XBUF_GET_DATA(_regs[DL11_XBUF]);
 
-  auto cb = [this, ch]() {
+  _txTask = _ts->SetTimeout([this, ch]() {
     _txTask = TS_NULL_TASK;
 
     if(!(_regs[DL11_XCSR] & DL11_XCSR_MAINT) && _onTx)
@@ -231,13 +225,7 @@ void DL11::_runTransmitter() {
       _runTransmitter();
     else
       _updateInterrupts();
-  };
-
-#ifdef DL11_XMIT_TIME_US
-  _txTask = _ts->SetTimeout(cb, DL11_XMIT_TIME_US * TS_MICROSECONDS);
-#else
-  cb();
-#endif
+  }, DL11_XMIT_TIME_US * TS_MICROSECONDS);
 
   if(_regs[DL11_XCSR] & DL11_XCSR_MAINT)
     _runReceiver(ch);

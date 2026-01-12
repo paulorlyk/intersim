@@ -128,9 +128,8 @@ int main() {
   DL11_window dl11_window(&dl11);
   RK11_window rk11_window(&rk11);
 
-  // Main loop
   bool done = false;
-  while(!done) {
+  auto doRender = [&]() {
     SDL_Event event;
     while(SDL_PollEvent(&event)) {
       ImGui_ImplSDL3_ProcessEvent(&event);
@@ -142,22 +141,8 @@ int main() {
         done = true;
     }
 
-    auto idleTime = scheduler->Run();
-
-    bool cpuWait = false;
-    for(int i = 0; i < 40000; ++i) {
-      cpuWait = !cpu.Run();
-      if(cpuWait)
-        break;
-    }
-
-    const int maxDelay_ms = 10;
-    auto delay_ms = cpuWait ? std::min((int)(idleTime < 0 ? maxDelay_ms : (idleTime / TS_SECONDS / 1000)), maxDelay_ms) : 0;
-
-    SDL_Delay(delay_ms);
-
     if(SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
-      continue;
+      return;
 
     // Start the Dear ImGui frame
     ImGui_ImplSDLRenderer3_NewFrame();
@@ -197,7 +182,28 @@ int main() {
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
 
     SDL_RenderPresent(renderer);
+  };
+
+  auto tsRender = scheduler->SetInterval(doRender, TS_SECONDS / 60);
+
+  auto tsCpu = scheduler->SetInterval([&cpu]() {
+    for(int i = 0; i < 3000; ++i) {
+      if(!cpu.Run())
+        break;
+    }
+  }, 1 * TS_MILLISECONDS);
+
+  while(!done) {
+    auto idleTime = scheduler->Run();
+
+    SDL_DelayNS(idleTime);
   }
+
+  scheduler->Cancel(tsCpu);
+  tsCpu = TS_NULL_TASK;
+
+  scheduler->Cancel(tsRender);
+  tsRender = TS_NULL_TASK;
 
   ImGui_ImplSDLRenderer3_Shutdown();
   ImGui_ImplSDL3_Shutdown();

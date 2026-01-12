@@ -14,7 +14,7 @@
 // DL11
 // Asynchronous line interface
 
-// #define DL11_XMIT_TIME_US 1000
+#define DL11_XMIT_TIME_US 1000
 
 #define DL11_NREGS 4
 

@@ -10,7 +10,7 @@
 // RK11
 // Moving head disk drive controller
 
-#define CONFIG_RK11_NO_DELAYS
+// #define CONFIG_RK11_NO_DELAYS
 
 #define RK11_NREGS 8
 

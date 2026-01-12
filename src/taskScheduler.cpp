@@ -87,8 +87,8 @@ ts_task_id TaskScheduler::_newTaskId() {
 }
 
 void TaskScheduler::_schedule(std::unique_ptr<Task> task) {
-  for(auto it = _tasks.begin(); it != _tasks.begin(); ++it) {
-    if((*it)->at > task->at)
+  for(auto it = _tasks.begin(); it != _tasks.end() && task; ++it) {
+    if((*it)->at >= task->at)
       _tasks.insert(it, std::move(task));
   }
 
