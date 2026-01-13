@@ -8,12 +8,11 @@
 #include <memory>
 
 #include "unibus.h"
-#include "mmu.h"
 
 class Mem {
   public:
-    data_status_t Read(cpu_addr addr, cpu_space s, cpu_mode m, MMU* mmu);
-    data_status_t Write(cpu_addr addr, cpu_space s, cpu_mode m, bool bByte, cpu_word data, MMU* mmu);
+    DataStatus Read(ph_addr pa, bool bByte);
+    DataStatus Write(ph_addr pa, bool bByte, cpu_word data);
 
     void Reset();
 

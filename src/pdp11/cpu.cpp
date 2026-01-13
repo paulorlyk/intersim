@@ -255,7 +255,19 @@ static void _initNameLUT() {
   __arrOpcodeNameLUT[_mfpt_op]= "MFPT";
 }
 
-static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cpu_addr *pc, cpu_word PSW, Mem* mem, MMU* mmu) {
+static std::optional<cpu_word> _attemptRead(cpu_addr addr, cpu_word PSW, Mem* mem, const MMU& mmu) {
+  auto pa = mmu.Lookup(addr, cpu_space_I, PSW_GET_CUR_MODE(PSW), false);
+  if(!pa)
+    return std::nullopt;
+
+  auto w = mem->Read(*pa, false);
+  if(w.error)
+    return std::nullopt;
+
+  return w.data;
+}
+
+static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cpu_addr &pc, cpu_word PSW, Mem* mem, const MMU& mmu) {
   static char res[64] = "";
 
   int pos = 0;
@@ -266,21 +278,21 @@ static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cp
         break;
 
       case _auto_inc: {   // PC Immediate
-        cpu_word data = mem->Read(*pc += 2, cpu_space_I, PSW_GET_CUR_MODE(PSW), mmu);
-        if(data & MEM_HAS_ERR)
+        auto data = _attemptRead(pc += 2, PSW, mem, mmu);
+        if(!data)
           pos += sprintf(res + pos, "#?[MEM_FAULT]");
         else
-          pos += sprintf(res + pos, "#%06o", data);
+          pos += sprintf(res + pos, "#%06o", *data);
 
         return res;
       }
 
       case _auto_inc_deferred: {  // PC Absolute
-        cpu_word data = mem->Read(*pc += 2, cpu_space_I, PSW_GET_CUR_MODE(PSW), mmu);
-        if(data & MEM_HAS_ERR)
+        auto data = _attemptRead(pc += 2, PSW, mem, mmu);
+        if(!data)
           pos += sprintf(res + pos, "@#?[MEM_FAULT]");
         else
-          pos += sprintf(res + pos, "@#%06o", data);
+          pos += sprintf(res + pos, "@#%06o", *data);
 
         return res;
       }
@@ -292,21 +304,21 @@ static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cp
       break;
 
     case _index: {
-      cpu_word data = mem->Read(*pc += 2, cpu_space_I, PSW_GET_CUR_MODE(PSW), mmu);
-      if(data & MEM_HAS_ERR)
+      auto data = _attemptRead(pc += 2, PSW, mem, mmu);
+      if(!data)
         pos += sprintf(res + pos, "X[MEM_FAULT](%s)", __arrRegNameLUT[reg]);
       else
-        pos += sprintf(res + pos, "#%06o(%s)", data, __arrRegNameLUT[reg]);
+        pos += sprintf(res + pos, "#%06o(%s)", *data, __arrRegNameLUT[reg]);
 
       return res;
     }
 
     case _index_deferred: {
-      cpu_word data = mem->Read(*pc += 2, cpu_space_I, PSW_GET_CUR_MODE(PSW), mmu);
-      if(data & MEM_HAS_ERR)
+      auto data = _attemptRead(pc += 2, PSW, mem, mmu);
+      if(!data)
         pos += sprintf(res + pos, "@X[MEM_FAULT](%s)", __arrRegNameLUT[reg]);
       else
-        pos += sprintf(res + pos, "@#%06o(%s)", data, __arrRegNameLUT[reg]);
+        pos += sprintf(res + pos, "@#%06o(%s)", *data, __arrRegNameLUT[reg]);
 
       return res;
     }
@@ -317,7 +329,7 @@ static const char* _formatInstructionOperand(CpuAddressingMode mode, int reg, cp
   return res;
 }
 
-static const char* _formatInstruction(cpu_addr pc, cpu_word instWord, const struct _instruction* pInst, cpu_word PSW, Mem* mem, MMU* mmu) {
+static const char* _formatInstruction(cpu_addr pc, cpu_word instWord, const struct _instruction* pInst, cpu_word PSW, Mem* mem, const MMU& mmu) {
   static char res[256] = "";
 
   pc -= 2;
@@ -331,12 +343,12 @@ static const char* _formatInstruction(cpu_addr pc, cpu_word instWord, const stru
       break;
 
     case _instt_single_op:
-      pos += sprintf(res + pos, " %s", _formatInstructionOperand(pInst->dstMode, pInst->dst, &pc, PSW, mem, mmu));
+      pos += sprintf(res + pos, " %s", _formatInstructionOperand(pInst->dstMode, pInst->dst, pc, PSW, mem, mmu));
       break;
 
     case _instt_double_op:
-      pos += sprintf(res + pos, " %s", _formatInstructionOperand(pInst->srcMode, pInst->src, &pc, PSW, mem, mmu));
-      pos += sprintf(res + pos, ", %s", _formatInstructionOperand(pInst->dstMode, pInst->dst, &pc, PSW, mem, mmu));
+      pos += sprintf(res + pos, " %s", _formatInstructionOperand(pInst->srcMode, pInst->src, pc, PSW, mem, mmu));
+      pos += sprintf(res + pos, ", %s", _formatInstructionOperand(pInst->dstMode, pInst->dst, pc, PSW, mem, mmu));
       break;
 
     case _instt_branch:
@@ -352,7 +364,7 @@ static const char* _formatInstruction(cpu_addr pc, cpu_word instWord, const stru
       break;
 
     case _instt_double_op_reg_src:
-      pos += sprintf(res + pos, " %s", _formatInstructionOperand(pInst->srcMode, pInst->src, &pc, PSW, mem, mmu));
+      pos += sprintf(res + pos, " %s", _formatInstructionOperand(pInst->srcMode, pInst->src, pc, PSW, mem, mmu));
       pos += sprintf(res + pos, ", %s", __arrRegNameLUT[pInst->reg]);
       break;
 
@@ -402,51 +414,6 @@ CPU::~CPU() {
   _mem->GetUnibus()->UnregisterDevice(this);
 }
 
-void CPU::Reset() {
-}
-
-cpu_word CPU::Read(un_addr addr) {
-  assert(!(addr & 1));
-
-  switch(addr) {
-    case 0777776:   // PS
-      // DEBUG("CPU: PS RD");
-      return _PSW;
-
-    case 0777570:   // Console Switch & Display Register
-      return 0;
-
-    // case 0777764:   // System I/D Register
-    //     return 1;
-  }
-
-  assert(false);
-  return 0;
-}
-
-void CPU::Write(un_addr addr, cpu_word data, cpu_word mask) {
-  assert((addr & 1) == 0);
-  assert(mask == 0xFFFF);
-
-  switch(addr) {
-    default:
-      assert(false);
-      break;
-
-    case 0777776:   // PS
-      // DEBUG("CPU: PS WR");
-      _setPSW(data);
-      break;
-
-    case 0777570:   // Console Switch & Display Register
-      // DEBUG("DISPLAY: 0x%04X", data);
-      break;
-
-    // case 0777764:   // System I/D Register
-    //   break;
-  }
-}
-
 cpu_word CPU::IrqAck() {
   return 0;
 }
@@ -457,6 +424,7 @@ bool CPU::Run() {
   //   _disassemblyOutput = true;
   //   DEBUG("debug");
   // }
+  // _disassemblyOutput = true;
 
   if(_halt)
     return false;
@@ -514,7 +482,7 @@ bool CPU::Run() {
   // TODO: Debug
   if(_disassemblyOutput) {
     static int ctr = 0;
-    DEBUG("%d %s", ctr++, _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
+    DEBUG("%d %s", ctr++, _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, _mmu));
 
     // if(ctr >= 2000)
     //   DEBUG("debug");
@@ -902,21 +870,21 @@ bool CPU::Run() {
 
     case _mfps: assert(false);
 
-    case _br:   BRANCH_IF(true,                                                     inst.offset); break;
-    case _bne:  BRANCH_IF(!PSW_GET_Z(_PSW),                                         inst.offset); break;
-    case _beq:  BRANCH_IF(PSW_GET_Z(_PSW),                                          inst.offset); break;
-    case _bge:  BRANCH_IF(PSW_GET_N(_PSW) == PSW_GET_V(_PSW),                       inst.offset); break;
-    case _blt:  BRANCH_IF(PSW_GET_N(_PSW) != PSW_GET_V(_PSW),                       inst.offset); break;
-    case _bgt:  BRANCH_IF(PSW_GET_Z(_PSW) == (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
-    case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) != (PSW_GET_N(_PSW) != PSW_GET_V(_PSW)),  inst.offset); break;
-    case _bpl:  BRANCH_IF(!PSW_GET_N(_PSW),                                         inst.offset); break;
-    case _bmi:  BRANCH_IF(PSW_GET_N(_PSW),                                          inst.offset); break;
-    case _bhi:  BRANCH_IF(!PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW),                     inst.offset); break;
-    case _blos: BRANCH_IF(PSW_GET_C(_PSW) != PSW_GET_Z(_PSW),                       inst.offset); break;
-    case _bvc:  BRANCH_IF(!PSW_GET_V(_PSW),                                         inst.offset); break;
-    case _bvs:  BRANCH_IF(PSW_GET_V(_PSW),                                          inst.offset); break;
-    case _bcc:  BRANCH_IF(!PSW_GET_C(_PSW),                                         inst.offset); break;
-    case _bcs:  BRANCH_IF(PSW_GET_C(_PSW),                                          inst.offset); break;
+    case _br:   BRANCH_IF(true,                                                       inst.offset); break;
+    case _bne:  BRANCH_IF(!PSW_GET_Z(_PSW),                                           inst.offset); break;
+    case _beq:  BRANCH_IF(PSW_GET_Z(_PSW),                                            inst.offset); break;
+    case _bge:  BRANCH_IF(PSW_GET_N(_PSW) == PSW_GET_V(_PSW),                         inst.offset); break;
+    case _blt:  BRANCH_IF(PSW_GET_N(_PSW) != PSW_GET_V(_PSW),                         inst.offset); break;
+    case _bgt:  BRANCH_IF(!PSW_GET_Z(_PSW) && ((PSW_GET_N(_PSW) == PSW_GET_V(_PSW))), inst.offset); break;
+    case _ble:  BRANCH_IF(PSW_GET_Z(_PSW) || ((PSW_GET_N(_PSW) != PSW_GET_V(_PSW))),  inst.offset); break;
+    case _bpl:  BRANCH_IF(!PSW_GET_N(_PSW),                                           inst.offset); break;
+    case _bmi:  BRANCH_IF(PSW_GET_N(_PSW),                                            inst.offset); break;
+    case _bhi:  BRANCH_IF(!PSW_GET_C(_PSW) && !PSW_GET_Z(_PSW),                       inst.offset); break;
+    case _blos: BRANCH_IF(PSW_GET_C(_PSW) || PSW_GET_Z(_PSW),                         inst.offset); break;
+    case _bvc:  BRANCH_IF(!PSW_GET_V(_PSW),                                           inst.offset); break;
+    case _bvs:  BRANCH_IF(PSW_GET_V(_PSW),                                            inst.offset); break;
+    case _bcc:  BRANCH_IF(!PSW_GET_C(_PSW),                                           inst.offset); break;
+    case _bcs:  BRANCH_IF(PSW_GET_C(_PSW),                                            inst.offset); break;
 
     case _jmp: {
       if(_makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)) {
@@ -952,7 +920,7 @@ bool CPU::Run() {
 
     case _reset: {
       if(PSW_GET_CUR_MODE(_PSW) == CPU_MODE_KERNEL) {
-        _mmu.Reset();
+        // Also resets MMU trough Unibus
         _mem->Reset();
       }
       break;
@@ -1011,33 +979,33 @@ bool CPU::Run() {
 
     case _c_op: {
       _setFlags(
-        PSW_GET_N(_PSW) && !(inst.mask & (1 << 0)),
-        PSW_GET_Z(_PSW) && !(inst.mask & (1 << 1)),
-        PSW_GET_V(_PSW) && !(inst.mask & (1 << 2)),
-        PSW_GET_C(_PSW) && !(inst.mask & (1 << 3))
+        PSW_GET_N(_PSW) && !(inst.mask & (1 << 3)),
+        PSW_GET_Z(_PSW) && !(inst.mask & (1 << 2)),
+        PSW_GET_V(_PSW) && !(inst.mask & (1 << 1)),
+        PSW_GET_C(_PSW) && !(inst.mask & (1 << 0))
       );
       break;
     }
 
     case _s_op: {
       _setFlags(
-        PSW_GET_N(_PSW) || (inst.mask & (1 << 0)),
-        PSW_GET_Z(_PSW) || (inst.mask & (1 << 1)),
-        PSW_GET_V(_PSW) || (inst.mask & (1 << 2)),
-        PSW_GET_C(_PSW) || !(inst.mask & (1 << 3))
+        PSW_GET_N(_PSW) || (inst.mask & (1 << 3)),
+        PSW_GET_Z(_PSW) || (inst.mask & (1 << 2)),
+        PSW_GET_V(_PSW) || (inst.mask & (1 << 1)),
+        PSW_GET_C(_PSW) || (inst.mask & (1 << 0))
       );
       break;
     }
 
     case _mfpt_op: {
       // PDP-11/44 only
-      DEBUG("MFPT INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
+      DEBUG("MFPT INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, _mmu));
       _trap(TRAP_RESERVED_INSTRUCTION);
       break;
     }
 
     default: {
-      DEBUG("UNIMPLEMENTED INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, &_mmu));
+      DEBUG("UNIMPLEMENTED INSTRUCTION: %s", _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, _mmu));
       assert(false);
       break;
     }
@@ -1097,38 +1065,49 @@ void CPU::_setPSW(cpu_word psw) {
 }
 
 bool CPU::_read(cpu_addr addr, bool bByte, cpu_space space, cpu_mode mode, cpu_word *data) {
-  uint32_t w = _mem->Read(addr & ~1U, space, mode, &_mmu);
-  if(w & MEM_HAS_ERR) {
-    DEBUG("CPU MEM READ ERROR: 0x%08x", w);
+  auto pa = _mmu.Map(addr, space, mode, false);
+  if(!pa) {
+    DEBUG("CPU MMU READ ERROR");
 
     // TODO: Update CPU Error Register
 
-    _trap(w & MEM_ERR_MMU_ABORTED ? TRAP_MMU : TRAP_ERR);
+    _trap(TRAP_MMU);
     return false;
   }
 
-  if(bByte) {
-    w = w >> (8 * (addr & 1U)) & 0xFF;
-    *data = SIGN_EXTEND_BYTE(w);
+  auto w = _mem->Read(*pa, bByte);
+  if(w.error) {
+    DEBUG("CPU MEM READ ERROR: 0x%08x", w.data);
+
+    // TODO: Update CPU Error Register
+
+    _trap(TRAP_ERR);
+    return false;
   }
-  else {
-    *data = w;
-  }
+
+  *data = bByte ? SIGN_EXTEND_BYTE(w.data) : w.data;
 
   return true;
 }
 
 bool CPU::_write(cpu_addr addr, bool bByte, cpu_word data, cpu_space space, cpu_mode mode) {
-  // if(bByte)
-  //   data &= 0xFF;
-
-  uint32_t res = _mem->Write(addr, space, mode, bByte, data, &_mmu);
-  if(res & MEM_HAS_ERR) {
-    DEBUG("CPU MEM WRITE ERROR: 0x%08x", res);
+  auto pa = _mmu.Map(addr, space, mode, true);
+  if(!pa) {
+    DEBUG("CPU MMU WRITE ERROR");
 
     // TODO: Update CPU Error Register
 
-    _trap(res & MEM_ERR_MMU_ABORTED ? TRAP_MMU : TRAP_ERR);
+    _trap(TRAP_MMU);
+    return false;
+  }
+
+  auto res = _mem->Write(*pa, bByte, data);
+  if(res.error) {
+    DEBUG("CPU MEM WRITE ERROR: 0x%08x", res.data);
+
+    // TODO: Update CPU Error Register
+
+    _trap(TRAP_ERR);
     return false;
   }
 
@@ -1147,33 +1126,38 @@ bool CPU::_makeOperandAddress(CpuAddressingMode mode, int reg, bool bByte, opera
 
   switch(mode) {
     default:
-    case _reg:
+    case _reg: {
       *pAddr |= OPERAND_TYPE_REG;
       addr = reg;
       break;
+    }
 
-    case _reg_deferred:
+    case _reg_deferred: {
       addr = *pRn;
       break;
+    }
 
-    case _auto_inc:
+    case _auto_inc: {
       addr = *pRn;
       *pRn += nRnDiff = 1 + (!bByte || reg == 6 || reg == 7);
       break;
+    }
 
-    case _auto_inc_deferred:
+    case _auto_inc_deferred: {
       if(!_read(*pRn, false, cpu_space_D, PSW_GET_CUR_MODE(_PSW), &addr))
         return false;
 
       *pRn += nRnDiff = 2;
       break;
+    }
 
-    case _auto_dec:
+    case _auto_dec: {
       *pRn += nRnDiff = -(1 + (!bByte || reg == 6 || reg == 7));
       addr = *pRn;
       break;
+    }
 
-    case _auto_dec_deferred:
+    case _auto_dec_deferred: {
       nRnDiff = -2;
 
       if(!_read(*pRn, false, cpu_space_D, PSW_GET_CUR_MODE(_PSW), &addr))
@@ -1181,6 +1165,7 @@ bool CPU::_makeOperandAddress(CpuAddressingMode mode, int reg, bool bByte, opera
 
       *pRn += nRnDiff;
       break;
+    }
 
     case _index: {
       // Make sure that index was fetched before reading register value
@@ -1194,8 +1179,7 @@ bool CPU::_makeOperandAddress(CpuAddressingMode mode, int reg, bool bByte, opera
       break;
     }
 
-    case _index_deferred:
-    {
+    case _index_deferred: {
       // Make sure that index was fetched before reading register value
       // This is important in case if register itself is PC
       cpu_word X;
@@ -1488,4 +1472,48 @@ bool CPU::_decode(cpu_word inst, struct _instruction *pInst) {
   }
 
   return true;
+}
+
+void CPU::Reset() {
+}
+
+cpu_word CPU::Read(un_addr addr) {
+  assert(!(addr & 1));
+
+  switch(addr) {
+    case 0777776:   // PS
+      // DEBUG("CPU: PS RD");
+      return _PSW;
+
+    case 0777570:   // Console Switch & Display Register
+      return 0;
+
+      // case 0777764:   // System I/D Register
+      //     return 1;
+  }
+
+  assert(false);
+  return 0;
+}
+
+void CPU::Write(un_addr addr, const PartialValue& data) {
+  assert((addr & 1) == 0);
+
+  switch(addr) {
+    default:
+      assert(false);
+      break;
+
+    case 0777776:   // PS
+      // DEBUG("CPU: PS WR");
+      _setPSW(data.GetValue(_PSW));
+      break;
+
+    case 0777570:   // Console Switch & Display Register
+      // DEBUG("DISPLAY: 0x%04X", data);
+      break;
+
+      // case 0777764:   // System I/D Register
+      //   break;
+  }
 }

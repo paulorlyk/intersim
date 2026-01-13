@@ -31,7 +31,7 @@ Loc.	Cont.	Instruction	Comment
 001016	100376  bpl .-2
 001020	005007	clr pc		start loaded bootstrap with jump to 0
 */
-static const cpu_word _bootstrap[] = {
+static const cpu_word _bootstrap_RK11[] = {
   0012700,    // mov #rkwc, r0
   0177406,
   0012710,    // mov #-256,(r0)
@@ -43,7 +43,6 @@ static const cpu_word _bootstrap[] = {
   0005007     // clr pc
 };
 const cpu_addr _bootstrapBase = 0001000;
-
 
 int main() {
   // Setup SDL
@@ -111,15 +110,21 @@ int main() {
 
   Mem mem;
   mem.GetRAM()->Poke(_bootstrapBase, (uint8_t *)_bootstrap, sizeof(_bootstrap));
+  mem.GetRAM()->Poke(_bootstrapBase, (uint8_t *)_bootstrap_RK11, sizeof(_bootstrap_RK11));
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0AA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0BA-PB.ptap", 0)) return EXIT_FAILURE;
+
+  // if(!mem.GetRAM()->DumpToFile("img/ram.img")) return EXIT_FAILURE;
+
+  CPU cpu(&mem, _bootstrapBase);
+  // CPU cpu(&mem, 0200);
 
   RK11 rk11(mem.GetUnibus(), scheduler);
   KW11 kw11(mem.GetUnibus(), scheduler);
   DL11 dl11(mem.GetUnibus(), scheduler, 0777560, 060);
 
-  CPU cpu(&mem, _bootstrapBase);
-
   if(!rk11.LoadDisk("img/unix_v5_rk/unix_v5_rk.dsk", 0))
-  // if(!rk11.LoadDisk("img/xxdp/rk11-XXDP.dsk", 0))
+  // if(!rk11.LoadDisk("img/xxdp/xxdp-rk.dsk", 0))
     return EXIT_FAILURE;
 
   CPU1170_window cpu1170_window(&cpu);
@@ -187,7 +192,7 @@ int main() {
   auto tsRender = scheduler->SetInterval(doRender, TS_SECONDS / 60);
 
   auto tsCpu = scheduler->SetInterval([&cpu]() {
-    for(int i = 0; i < 3000; ++i) {
+    for(int i = 0; i < 300000; ++i) {
       if(!cpu.Run())
         break;
     }

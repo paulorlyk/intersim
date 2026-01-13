@@ -52,6 +52,58 @@ MMU::MMU():
   MMU::Reset();
 }
 
+void MMU::UpdateMMR0(bool bInstCompleted) {
+  _MMR[0] = (_MMR[0] & ~MMU_MMR0_INST_COMPLETED) | (bInstCompleted ? MMU_MMR0_INST_COMPLETED : 0);
+}
+
+void MMU::ResetMMR1() {
+  if(!(_MMR[0] & MMU_MMR0_ERR_MASK))
+    _MMR[1] = 0;
+}
+
+void MMU::UpdateMMR1(int reg, int diff) {
+  assert(reg >= 0);
+  assert(reg < 8);
+  assert(diff >= -16);
+  assert(diff < 16);
+
+  if(!(_MMR[0] & MMU_MMR0_ERR_MASK)) {
+    _MMR[1] <<= 8;
+    _MMR[1] = ((diff << 3) & 0x00F8) | (reg & 7);
+  }
+}
+
+void MMU::UpdateMMR2(cpu_word val) {
+  if(!(_MMR[0] & MMU_MMR0_ERR_MASK))
+    _MMR[2] = val;
+}
+
+std::optional<ph_addr> MMU::Map(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) {
+  auto tr = _translate(addr, s, m, bWR);
+
+  if(bWR)
+    _selectPDR(addr, tr.s, m) |= PDR_W;
+
+  if(tr.errFlags) {
+    _mmuAbort(addr, tr.s, m, tr.errFlags);
+    return std::nullopt;
+  }
+
+  if(tr.trap)
+    _mmuTrap(addr, tr.s, m);
+
+  return tr.pa;
+}
+
+std::optional<ph_addr> MMU::Lookup(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) const {
+  auto tr = _translate(addr, s, m, bWR);
+
+  if(tr.errFlags)
+    return std::nullopt;
+
+  return tr.pa;
+}
+
 void MMU::Reset() {
   memset(_MMR, 0, sizeof(_MMR));
   memset(_pageRegModes, 0, sizeof(_pageRegModes));
@@ -111,9 +163,8 @@ cpu_word MMU::Read(un_addr addr) {
   }
 }
 
-void MMU::Write(un_addr addr, cpu_word data, cpu_word mask) {
+void MMU::Write(un_addr addr, const PartialValue& data) {
   assert((addr & 1) == 0);
-  assert(mask == 0xFFFF);
 
   for(auto &rg : _mmuGegGroupsTablePDR) {
     if(addr >= rg.start && addr < (rg.start + rg.size)) {
@@ -122,7 +173,7 @@ void MMU::Write(un_addr addr, cpu_word data, cpu_word mask) {
       // DEBUG("MMU: WR PDR%d", nReg);
 
       auto &PDR = _pageRegModes[rg.mode].pageRegSpaces[rg.space].PDR[nReg];
-      PDR = (PDR & ~PDR_WR_MASK) | (data & PDR_WR_MASK);
+      PDR = (PDR & ~PDR_WR_MASK) | (data.GetValue(PDR) & PDR_WR_MASK);
 
       return;
     }
@@ -134,7 +185,8 @@ void MMU::Write(un_addr addr, cpu_word data, cpu_word mask) {
 
       // DEBUG("MMU: WR PAR%d", nReg);
 
-      _pageRegModes[rg.mode].pageRegSpaces[rg.space].PAR[nReg] = data;
+      auto &PAR = _pageRegModes[rg.mode].pageRegSpaces[rg.space].PAR[nReg];
+      PAR = data.GetValue(PAR);
       _pageRegModes[rg.mode].pageRegSpaces[rg.space].PDR[nReg] &= ~(PDR_A | PDR_W);
 
       return;
@@ -168,26 +220,26 @@ void MMU::Write(un_addr addr, cpu_word data, cpu_word mask) {
       //       data & MMU_MMR0_ERR_ABRT_NR ? 1 : 0
       //     );
 
-      assert(!(data & MMU_MMR0_DST_MODE)); // TODO: Add support for maintenance mode
+      assert(!(data.GetValue(_MMR[0]) & MMU_MMR0_DST_MODE)); // TODO: Add support for maintenance mode
 
-      _MMR[0] = (_MMR[0] & ~MMU_MMR0_WR_MASK) | (data & MMU_MMR0_WR_MASK);
+      _MMR[0] = (_MMR[0] & ~MMU_MMR0_WR_MASK) | (data.GetValue(_MMR[0]) & MMU_MMR0_WR_MASK);
       break;
     }
 
     case MMU_REG_MMR1: {
       // DEBUG("MMU: WR MMR1");
 
-      _MMR[1] = data;
+      _MMR[1] = data.GetValue(_MMR[1]);
       break;
     }
 
     case MMU_REG_MMR3: {
       DEBUG("MMU: WR MMR3");
 
-      assert(!(data & MMU_MMR3_22BIT_MAP));   // TODO: Implement
-      assert(!(data & MMU_MMR3_UB_MAP_REL));  // TODO: Implement
+      assert(!(data.GetValue(_MMR[3]) & MMU_MMR3_22BIT_MAP));   // TODO: Implement
+      assert(!(data.GetValue(_MMR[3]) & MMU_MMR3_UB_MAP_REL));  // TODO: Implement
 
-      _MMR[3] = (_MMR[3] & ~MMU_MMR3_WR_MASK) | (data & MMU_MMR3_WR_MASK);
+      _MMR[3] = (_MMR[3] & ~MMU_MMR3_WR_MASK) | (data.GetValue(_MMR[3]) & MMU_MMR3_WR_MASK);
       break;
     }
 
@@ -207,50 +259,37 @@ cpu_word MMU::IrqAck() {
   return 0;
 }
 
-void MMU::UpdateMMR0(bool bInstCompleted) {
-  _MMR[0] = (_MMR[0] & ~MMU_MMR0_INST_COMPLETED) | (bInstCompleted ? MMU_MMR0_INST_COMPLETED : 0);
-}
-
-void MMU::ResetMMR1() {
-  if(!(_MMR[0] & MMU_MMR0_ERR_MASK))
-    _MMR[1] = 0;
-}
-
-void MMU::UpdateMMR1(int reg, int diff) {
-  assert(reg >= 0);
-  assert(reg < 8);
-  assert(diff >= -16);
-  assert(diff < 16);
-
-  if(!(_MMR[0] & MMU_MMR0_ERR_MASK)) {
-    _MMR[1] <<= 8;
-    _MMR[1] = ((diff << 3) & 0x00F8) | (reg & 7);
-  }
-}
-
-void MMU::UpdateMMR2(cpu_word val) {
-  if(!(_MMR[0] & MMU_MMR0_ERR_MASK))
-    _MMR[2] = val;
-}
-
-addr_status_t MMU::Map(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) {
+MMU::MMUTranslationResult MMU::_translate(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) const {
   assert(s < _cpu_space_max);
   assert(m < _cpu_mode_max);
+
+  MMUTranslationResult tr = {
+    .pa = 0,
+    .errFlags = 0,
+    .trap = false,
+    .s = s,
+  };
 
   if(!(_MMR[0] & MMU_MMR0_MMU_EN)) {
     // Memory Management Unit is inoperative and addresses are not
     // relocated or protected.
-    return Map16Bit(addr);
+    // 16-bit mapping
+
+    tr.pa = addr;
+    if(addr >= MEM_16BIT_PERIPH_PAGE_ADDR) {
+      tr.pa -= MEM_16BIT_PERIPH_PAGE_ADDR;
+      tr.pa += MEM_UNIBUS_PERIPH_PAGE_ADDR + MEM_22BIT_UNIBUS_ADDR;
+    }
+
+    return tr;
   }
 
   if(   (m == cpu_mode_Kernel     && !(_MMR[3] & MMU_MMR3_KRN_D_EN))
      || (m == cpu_mode_Supervisor && !(_MMR[3] & MMU_MMR3_SVR_D_EN))
      || (m == cpu_mode_User       && !(_MMR[3] & MMU_MMR3_USR_D_EN))) {
-      // When D space is disabled, all references use the I space registers
-      s = cpu_space_I;
+    // When D space is disabled, all references use the I space registers
+    tr.s = cpu_space_I;
   }
-
-  auto pageNo = (addr >> 13) & 7;
 
   // Select Page Address Register (PAR) and Page Descriptor Register (PDR).
   // Each CPU mode (Kernel, Supervisor and User) has it's own set
@@ -261,126 +300,123 @@ addr_status_t MMU::Map(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) {
   // Address (VA) are called Displacement Field (DF).
   // It consists of Block Number (BN) - higher 7 bits and
   // Displacement In Block (DIB) - lower 6 bits.
-  auto PAR = _pageRegModes[m].pageRegSpaces[s].PAR[pageNo];
-  auto &PDR = _pageRegModes[m].pageRegSpaces[s].PDR[pageNo];
-
-  if(bWR)
-    PDR |= PDR_W;
+  auto PAR = _selectPAR(addr, tr.s, m);
+  auto PDR = _selectPDR(addr, tr.s, m);
 
   if(m == cpu_mode_Invalid) {
-    _mmuAbort(PDR, pageNo, s, m, MMU_MMR0_ERR_ABRT_PL | MMU_MMR0_ERR_ABRT_NR);
-    return MEM_ERR(MEM_ERR_MMU_ABORTED);
+    tr.errFlags = MMU_MMR0_ERR_ABRT_PL | MMU_MMR0_ERR_ABRT_NR;
+    return tr;
   }
 
   switch(PDR & PDR_ACF_MASK) {
-   case PDR_ACF_NON_RESIDENT:
-   case PDR_ACF_UNUSED_3:
-   case PDR_ACF_UNUSED_7: {
-     _mmuAbort(PDR, pageNo, s, m, MMU_MMR0_ERR_ABRT_PL | MMU_MMR0_ERR_ABRT_NR);
-     return MEM_ERR(MEM_ERR_MMU_ABORTED);
-   }
+    case PDR_ACF_NON_RESIDENT:
+    case PDR_ACF_UNUSED_3:
+    case PDR_ACF_UNUSED_7: {
+      tr.errFlags = MMU_MMR0_ERR_ABRT_PL | MMU_MMR0_ERR_ABRT_NR;
+      return tr;
+    }
 
-   case PDR_ACF_RO_TRAP: {
-     if(bWR) {
-       _mmuAbort(PDR, pageNo, s, m, MMU_MMR0_ERR_ABRT_RO);
-       return MEM_ERR(MEM_ERR_MMU_ABORTED);
-     }
+    case PDR_ACF_RO_TRAP: {
+      if(bWR) {
+        tr.errFlags = MMU_MMR0_ERR_ABRT_RO;
+        return tr;
+      }
 
-     _mmuTrap(PDR);
-     break;
-   }
+      tr.trap = true;
+      break;
+    }
 
-   case PDR_ACF_RO: {
-     if(bWR) {
-       _mmuAbort(PDR, pageNo, s, m, MMU_MMR0_ERR_ABRT_RO);
-       return MEM_ERR(MEM_ERR_MMU_ABORTED);
-     }
+    case PDR_ACF_RO: {
+      if(bWR) {
+        tr.errFlags = MMU_MMR0_ERR_ABRT_RO;
+        return tr;
+      }
 
-     break;
-   }
+      break;
+    }
 
-   case PDR_ACF_RW_TRAP: {
-     _mmuTrap(PDR);
-     break;
-   }
+    case PDR_ACF_RW_TRAP: {
+      tr.trap = true;
+      break;
+    }
 
-   case PDR_ACF_WR_TRAP: {
-     if(bWR)
-        _mmuTrap(PDR);
+    case PDR_ACF_WR_TRAP: {
+      if(bWR)
+        tr.trap = true;
 
-     break;
-   }
+      break;
+    }
 
     case PDR_ACF_RW:
       break;
 
-   default: {
+    default: {
      assert(false);
      break;
-   }
+    }
   }
 
   const cpu_word BN = (addr >> 6) & 0x007F;
 
   if(((PDR & PDR_ED) && (BN < PDR_GET_PLF(PDR))) || (!(PDR & PDR_ED) && (BN > PDR_GET_PLF(PDR)))) {
-    _mmuAbort(PDR, pageNo, s, m, MMU_MMR0_ERR_ABRT_PL);
-    return MEM_ERR(MEM_ERR_MMU_ABORTED);
+    tr.errFlags = MMU_MMR0_ERR_ABRT_PL;
+    return tr;
   }
 
   // Page Address Field (PAF) of selected PAR is
   // 12 bits on 11/34A and 11/60 and 16 bits on 11/44 and 11/70.
   // It holds the starting address of the page.
-  ph_addr PA = PAR;
+  tr.pa = PAR;
 
   // The Physical Block Number (PBN) is obtained by
   // adding the PAF from PAR to BN from virtual address.
   // PBN will contain our final Physical Address (PA).
-  PA += BN;
+  tr.pa += BN;
 
   // Get final PA by joining 6 bit DIB from VA to PBN.
-  PA = (PA << 6) | (addr & 0x003F);
+  tr.pa = (tr.pa << 6) | (addr & 0x003F);
 
   if(!(_MMR[3] & MMU_MMR3_22BIT_MAP)) {
     // 18-bit mapping
-    if(PA >= MEM_18BIT_PERIPH_PAGE_ADDR) {
-      PA -= MEM_18BIT_PERIPH_PAGE_ADDR;
-      PA += MEM_UNIBUS_PERIPH_PAGE_ADDR + MEM_22BIT_UNIBUS_ADDR;
+    if(tr.pa >= MEM_18BIT_PERIPH_PAGE_ADDR) {
+      tr.pa -= MEM_18BIT_PERIPH_PAGE_ADDR;
+      tr.pa += MEM_UNIBUS_PERIPH_PAGE_ADDR + MEM_22BIT_UNIBUS_ADDR;
     }
   }
   else
     assert(false);  // TODO: Implement 22-bit mapping
 
-  return PA;
+  return tr;
 }
 
-addr_status_t MMU::Map16Bit(cpu_addr addr) {
-  // 16-bit mapping
-
-  ph_addr PA = addr;
-  if(addr >= MEM_16BIT_PERIPH_PAGE_ADDR) {
-    PA -= MEM_16BIT_PERIPH_PAGE_ADDR;
-    PA += MEM_UNIBUS_PERIPH_PAGE_ADDR + MEM_22BIT_UNIBUS_ADDR;
-  }
-
-  return PA;
+cpu_word & MMU::_selectPDR(cpu_addr addr, cpu_space s, cpu_mode m) {
+  return _pageRegModes[m].pageRegSpaces[s].PDR[_getPageNo(addr)];
 }
 
-void MMU::_mmuAbort(cpu_word &PDR, int pageNo, cpu_space s, cpu_mode m, cpu_word errFlags) {
+cpu_word MMU::_selectPDR(cpu_addr addr, cpu_space s, cpu_mode m) const {
+  return _pageRegModes[m].pageRegSpaces[s].PDR[_getPageNo(addr)];
+}
+
+cpu_word MMU::_selectPAR(cpu_addr addr, cpu_space s, cpu_mode m) const {
+  return _pageRegModes[m].pageRegSpaces[s].PAR[_getPageNo(addr)];
+}
+
+void MMU::_mmuAbort(cpu_addr addr, cpu_space s, cpu_mode m, cpu_word errFlags) {
   DEBUG("MMU: ABORT");
 
-  MMU_MMR0_SET_PAGE_NO(_MMR[0], pageNo);
+  MMU_MMR0_SET_PAGE_NO(_MMR[0], _getPageNo(addr));
   MMU_MMR0_SET_PAGE_SPACE(_MMR[0], s);
   MMU_MMR0_SET_CPU_MODE_NO(_MMR[0], m);
 
   _MMR[0] = (_MMR[0] & ~MMU_MMR0_ERR_MASK) | errFlags;
 
-  PDR |= PDR_A;
+  _selectPDR(addr, s, m) |= PDR_A;
 }
 
-void MMU::_mmuTrap(cpu_word &PDR) {
+void MMU::_mmuTrap(cpu_addr addr, cpu_space s, cpu_mode m) {
   DEBUG("MMU: TRAP");
 
-  PDR |= PDR_A;
+  _selectPDR(addr, s, m) |= PDR_A;
 
   _MMR[0] |= MMU_MMR0_TRAP;
 

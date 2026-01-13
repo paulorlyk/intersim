@@ -27,6 +27,14 @@ DL11::~DL11() {
   _rxTask = TS_NULL_TASK;
 }
 
+bool DL11::Receive(char ch) {
+  // Ignore receiver input while in maintenance mode
+  if(_regs[DL11_XCSR] & DL11_XCSR_MAINT)
+    return true;
+
+  return _runReceiver(ch);
+}
+
 void DL11::Reset() {
   memset(_regs, 0, sizeof(_regs));
 
@@ -70,7 +78,7 @@ cpu_word DL11::Read(un_addr addr) {
   return res;
 }
 
-void DL11::Write(un_addr addr, cpu_word data, cpu_word mask) {
+void DL11::Write(un_addr addr, const PartialValue& data) {
   assert((addr & 1) == 0);
   assert(addr >= _baseAddr);
   assert(addr < _baseAddr + (DL11_NREGS * MEM_WORD_SIZE));
@@ -81,13 +89,13 @@ void DL11::Write(un_addr addr, cpu_word data, cpu_word mask) {
     case DL11_RCSR: {
       // DEBUG("DL11: Writing RCSR: 0%06o", data);
 
-      data = AugmentData(data, _regs[DL11_RCSR], mask);
+      auto v = data.GetValue(_regs[DL11_RCSR]);
 
-      assert(!(data & DL11_RCSR_DATASET_INT_ENB));
+      assert(!(v & DL11_RCSR_DATASET_INT_ENB));
 
-      _regs[DL11_RCSR] = (_regs[DL11_RCSR] & ~DL11_RCSR_WR_MASK) | (data & DL11_RCSR_WR_MASK);
+      _regs[DL11_RCSR] = (_regs[DL11_RCSR] & ~DL11_RCSR_WR_MASK) | (v & DL11_RCSR_WR_MASK);
 
-      if(data & DL11_RCSR_RDR_ENB)
+      if(v & DL11_RCSR_RDR_ENB)
         _regs[DL11_RCSR] &= ~DL11_RCSR_RCVR_DONE;
 
       _updateInterrupts();
@@ -108,11 +116,11 @@ void DL11::Write(un_addr addr, cpu_word data, cpu_word mask) {
     case DL11_XCSR: {
       // DEBUG("DL11: Writing XCSR: 0%06o", data);
 
-      data = AugmentData(data, _regs[DL11_XCSR], mask);
+      auto v = data.GetValue(_regs[DL11_XCSR]);
 
-      _regs[DL11_XCSR] = (_regs[DL11_XCSR] & ~DL11_XCSR_WR_MASK) | (data & DL11_XCSR_WR_MASK);
+      _regs[DL11_XCSR] = (_regs[DL11_XCSR] & ~DL11_XCSR_WR_MASK) | (v & DL11_XCSR_WR_MASK);
 
-      if(data & DL11_XCSR_MAINT) {
+      if(v & DL11_XCSR_MAINT) {
         _ts->Cancel(_rxTask);
         _rxTask = TS_NULL_TASK;
       }
@@ -124,9 +132,7 @@ void DL11::Write(un_addr addr, cpu_word data, cpu_word mask) {
     case DL11_XBUF: {
       // DEBUG("DL11: Writing XBUF: 0%06o", data);
 
-      data = AugmentData(data, _regs[DL11_XBUF], mask);
-
-      DL11_XBUF_SET_DATA(_regs[DL11_XBUF], data);
+      DL11_XBUF_SET_DATA(_regs[DL11_XBUF], data.GetValue(_regs[DL11_XBUF]));
 
       _runTransmitter();
       break;
@@ -151,14 +157,6 @@ cpu_word DL11::IrqAck() {
 
   // Should not be here
   assert(false);
-}
-
-bool DL11::Receive(char ch) {
-  // Ignore receiver input while in maintenance mode
-  if(_regs[DL11_XCSR] & DL11_XCSR_MAINT)
-    return true;
-
-  return _runReceiver(ch);
 }
 
 void DL11::_updateInterrupts() {

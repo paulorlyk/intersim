@@ -21,12 +21,13 @@ class KW11 : public Device {
     KW11(const std::shared_ptr<Unibus>& bus, const std::shared_ptr<TaskScheduler>& ts);
     ~KW11() override;
 
+    cpu_word Get_SR() const { return _SR; }
+
+  protected:
     void Reset() override;
     cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
+    void Write(un_addr addr, const PartialValue& data) override;
     cpu_word IrqAck() override;
-
-    cpu_word Get_SR() const { return _SR; }
 
   private:
     cpu_word _SR = 0;

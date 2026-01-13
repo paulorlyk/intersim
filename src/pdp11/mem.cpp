@@ -6,25 +6,35 @@
 
 #include "../log.h"
 
-data_status_t Mem::Read(cpu_addr addr, cpu_space s, cpu_mode m, MMU* mmu) {
-  auto pa = mmu ? mmu->Map(addr, s, m, false) : MMU::Map16Bit(addr);
-  if(pa & MEM_HAS_ERR)
-    return pa;
+#include <cassert>
 
+DataStatus Mem::Read(ph_addr pa, bool bByte) {
+  if((pa & 1) && !bByte) {
+    DEBUG("MEMORY: Reading word from an odd address: 0%08o", pa);
+    return DataStatus::Error(MEM_ERR_ODD_ADDR);
+  }
+
+  auto wordAddr = pa & ~1U;
+
+  DataStatus data = 0;
   if(pa >= MEM_22BIT_UNIBUS_ADDR)
-    return _unibus->Read(pa - MEM_22BIT_UNIBUS_ADDR);
+    data = _unibus->Read(wordAddr - MEM_22BIT_UNIBUS_ADDR);
+  else
+    data = _ram->Read(wordAddr);
 
-  return _ram->Read(pa);
+  if(data.error)
+    return data;
+
+  if(bByte)
+    data.data = data.data >> (8 * (pa & 1U)) & 0xFF;
+
+  return data;
 }
 
-data_status_t Mem::Write(cpu_addr addr, cpu_space s, cpu_mode m, bool bByte, cpu_word data, MMU* mmu) {
-  auto pa = mmu ? mmu->Map(addr, s, m, true) : MMU::Map16Bit(addr);
-  if(pa & MEM_HAS_ERR)
-    return pa;
-
+DataStatus Mem::Write(ph_addr pa, bool bByte, cpu_word data) {
   if((pa & 1) && !bByte) {
     DEBUG("MEMORY: Writing word to an odd address: 0%08o, data: 0%06o", pa, data);
-    return MEM_ERR(MEM_ERR_ODD_ADDR);
+    return DataStatus::Error(MEM_ERR_ODD_ADDR);
   }
 
   cpu_word mask = 0xFFFF;
@@ -38,10 +48,12 @@ data_status_t Mem::Write(cpu_addr addr, cpu_space s, cpu_mode m, bool bByte, cpu
     }
   }
 
-  if(pa >= MEM_22BIT_UNIBUS_ADDR)
-    return _unibus->Write(pa - MEM_22BIT_UNIBUS_ADDR, data, mask);
+  const PartialValue pv(data, mask);
 
-  return _ram->Write(pa, data, mask);
+  if(pa >= MEM_22BIT_UNIBUS_ADDR)
+    return _unibus->Write(pa - MEM_22BIT_UNIBUS_ADDR, pv);
+
+  return _ram->Write(pa, pv);
 }
 
 void Mem::Reset() {

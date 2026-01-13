@@ -8,6 +8,7 @@
 #include "unibus.h"
 
 #include <functional>
+#include <optional>
 
 #define MMU_MMR0_MMU_EN         (1 << 0)    // Enable Relocation
 #define MMU_MMR0_PAGE_NO_MASK   0x000E      // Page Number
@@ -77,17 +78,13 @@ class MMU : public UnibusDevice {
 
     void OnTrap(const std::function<void()>& cbTrap) { _cbTrap = cbTrap; }
 
-    void Reset() override;
-    cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
-    cpu_word IrqAck() override;
-
     void UpdateMMR0(bool bInstCompleted);
     void ResetMMR1();
     void UpdateMMR1(int reg, int diff);
     void UpdateMMR2(cpu_word val);
 
-    addr_status_t Map(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR);
+    std::optional<ph_addr> Map(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR);
+    std::optional<ph_addr> Lookup(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) const;
 
     cpu_word Get_MMR0() const { return _MMR[0]; }
     cpu_word Get_MMR1() const { return _MMR[1]; }
@@ -96,12 +93,28 @@ class MMU : public UnibusDevice {
     const cpu_word* Get_PAR(int s, int m) const { return _pageRegModes[m].pageRegSpaces[s].PAR; }
     const cpu_word* Get_PDR(int s, int m) const { return _pageRegModes[m].pageRegSpaces[s].PDR; }
 
-  public:
-    static addr_status_t Map16Bit(cpu_addr addr);
+  protected:
+    void Reset() override;
+    cpu_word Read(un_addr addr) override;
+    void Write(un_addr addr, const PartialValue& data) override;
+    cpu_word IrqAck() override;
 
   private:
-    void _mmuAbort(cpu_word &PDR, int pageNo, cpu_space s, cpu_mode m, cpu_word errFlags);
-    void _mmuTrap(cpu_word &PDR);
+    struct MMUTranslationResult {
+      ph_addr pa;
+      cpu_word errFlags;
+      bool trap;
+      cpu_space s;
+    };
+
+  private:
+    MMUTranslationResult _translate(cpu_addr addr, cpu_space s, cpu_mode m, bool bWR) const;
+    static int _getPageNo(cpu_addr addr) { return (addr >> 13) & 7; };
+    cpu_word& _selectPDR(cpu_addr addr, cpu_space s, cpu_mode m);
+    cpu_word _selectPDR(cpu_addr addr, cpu_space s, cpu_mode m) const;
+    cpu_word _selectPAR(cpu_addr addr, cpu_space s, cpu_mode m) const;
+    void _mmuAbort(cpu_addr addr, cpu_space s, cpu_mode m, cpu_word errFlags);
+    void _mmuTrap(cpu_addr addr, cpu_space s, cpu_mode m);
     static std::vector<IoWindow> _buildIoMap();
 
   private:

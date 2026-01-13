@@ -112,11 +112,6 @@ class CPU : public UnibusDevice {
     CPU(Mem *mem, cpu_word R7);
     ~CPU() override;
 
-    void Reset() override;
-    cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
-    cpu_word IrqAck() override;
-
     bool Run();
 
     const MMU* GetMMU() const { return &_mmu; }
@@ -129,6 +124,12 @@ class CPU : public UnibusDevice {
     bool IsWait() const { return _wait; }
     bool IsHalt() const { return _halt; }
     bool HasIRQ() const { return _mem->GetUnibus()->HasIRG(); }
+
+  protected:
+    void Reset() override;
+    cpu_word Read(un_addr addr) override;
+    void Write(un_addr addr, const PartialValue& data) override;
+    cpu_word IrqAck() override;
 
   private:
     void _trap(cpu_word vec);

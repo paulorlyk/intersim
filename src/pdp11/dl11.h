@@ -98,11 +98,6 @@ class DL11 : public Device {
     DL11(const std::shared_ptr<Unibus>& bus, const std::shared_ptr<TaskScheduler>& ts, un_addr baseAddr, cpu_word baseVector);
     ~DL11() override;
 
-    void Reset() override;
-    cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
-    cpu_word IrqAck() override;
-
     void SetOnTx(const std::function<void(char ch)>& onTx) { _onTx = onTx; };
     bool Receive(char ch);
 
@@ -112,6 +107,12 @@ class DL11 : public Device {
     cpu_word Get_RBUF() const { return _regs[DL11_RBUF]; }
     cpu_word Get_XCSR() const { return _regs[DL11_XCSR]; }
     cpu_word Get_XBUF() const { return _regs[DL11_XBUF]; }
+
+  protected:
+    void Reset() override;
+    cpu_word Read(un_addr addr) override;
+    void Write(un_addr addr, const PartialValue& data) override;
+    cpu_word IrqAck() override;
 
   private:
     void _updateInterrupts();

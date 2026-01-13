@@ -72,6 +72,75 @@ RK11::RK11(const std::shared_ptr<Unibus> &bus, const std::shared_ptr<TaskSchedul
   RK11::Reset();
 }
 
+bool RK11::ConnectDisk(int nDisk, bool connected) {
+  if(nDisk < 0 || nDisk >= RK11_DISKS_MAX) {
+    DEBUG("RK11: Attempting to connect disk with invalid number %d", nDisk);
+    return false;
+  }
+
+  if(!connected && _disks[nDisk].connected) {
+    _unloadDisk(nDisk);
+    _disks[nDisk].connected = false;
+
+    DEBUG("RK11: Disk %d disconnected", nDisk);
+  }
+
+  if(connected && !_disks[nDisk].connected) {
+    _disks[nDisk].connected = true;
+
+    DEBUG("RK11: Disk %d connected", nDisk);
+  }
+
+  return true;
+}
+
+bool RK11::LoadDisk(const char *imageFileName, int nDisk) {
+  if(!imageFileName) {
+    DEBUG("RK11: Need disk image file name");
+    return false;
+  }
+
+  if(nDisk < 0 || nDisk >= RK11_DISKS_MAX) {
+    DEBUG("RK11: Attempting to load disk with invalid number %d", nDisk);
+    return false;
+  }
+
+  if(!ConnectDisk(nDisk, false) || !ConnectDisk(nDisk, true))
+    return false;
+
+  FILE *pfImage = fopen(imageFileName, "rb");
+  if(!pfImage) {
+    DEBUG("RK11: Failed to open image file `%s`", imageFileName);
+    return false;
+  }
+
+  const size_t diskSize = (size_t)RK05_DISK_SIZE_WORDS * MEM_WORD_SIZE;
+
+  _disks[nDisk].img.resize(diskSize);
+
+  size_t nRead = 0;
+  while(nRead < diskSize) {
+    nRead += fread(_disks[nDisk].img.data() + nRead, 1, diskSize - nRead, pfImage);
+
+    if(feof(pfImage))
+      break;
+
+    if(ferror(pfImage)) {
+      DEBUG("RK11: Error reading the disk image file `%s`", imageFileName);
+
+      fclose(pfImage);
+      ConnectDisk(nDisk, false);
+      return false;
+    }
+  }
+
+  fclose(pfImage);
+
+  DEBUG("RK11: Loaded %lu bytes from image file `%s` to disk %d", nRead, imageFileName, nDisk);
+
+  return true;
+}
+
 void RK11::Reset() {
   for(auto &disk : _disks)
     disk.writeProtect = false;
@@ -121,17 +190,18 @@ cpu_word RK11::Read(un_addr addr) {
   return _regs[reg];
 }
 
-void RK11::Write(un_addr addr, cpu_word data, cpu_word mask) {
+void RK11::Write(un_addr addr, const PartialValue& data) {
   assert((addr & 1) == 0);
   assert(addr >= RK11_PERIPH_START);
   assert(addr < RK11_PERIPH_START + (RK11_NREGS * MEM_WORD_SIZE));
-  assert(mask == 0xFFFF);
 
   switch(addr) {
     case RK11_REG_RKCS: {
       //DEBUG("RK11: Writing RKCS: 0%06o", data);
 
       const bool bIDE = (_regs[RK11_RKCS] & RK11_RKCS_IDE) != 0;
+
+      auto v = data.GetValue(_regs[RK11_RKCS]);
 
       // Preserve read-only bits
       const cpu_word roMask =
@@ -143,14 +213,14 @@ void RK11::Write(un_addr addr, cpu_word data, cpu_word mask) {
           | RK11_RKCS_HE
           | RK11_RKCS_ERR;
       _regs[RK11_RKCS] &= roMask;
-      _regs[RK11_RKCS] |= data & ~roMask;
+      _regs[RK11_RKCS] |= v & ~roMask;
 
-      if(bIDE != ((data & RK11_RKCS_IDE) != 0)) {
+      if(bIDE != ((v & RK11_RKCS_IDE) != 0)) {
         // TODO: Clear all pending interrupt flags or just disable interrupt delivery?
         _updateInterrupts();
       }
 
-      if((_regs[RK11_RKCS] & RK11_RKCS_RDY) && (data & RK11_RKCS_GO))
+      if((_regs[RK11_RKCS] & RK11_RKCS_RDY) && (v & RK11_RKCS_GO))
         _runFunction();
 
       break;
@@ -159,14 +229,14 @@ void RK11::Write(un_addr addr, cpu_word data, cpu_word mask) {
     case RK11_REG_RKWC: {
       //DEBUG("RK11: Writing RKWC: 0%06o", data);
 
-      _regs[RK11_RKWC] = data;
+      _regs[RK11_RKWC] = data.GetValue(_regs[RK11_RKWC]);
       break;
     }
 
     case RK11_REG_RKBA: {
       //DEBUG("RK11: Writing RKBA: 0%06o", data);
 
-      _regs[RK11_RKBA] = data & 0xFFFE;
+      _regs[RK11_RKBA] = data.GetValue(_regs[RK11_RKBA]) & 0xFFFE;
       break;
     }
 
@@ -174,7 +244,7 @@ void RK11::Write(un_addr addr, cpu_word data, cpu_word mask) {
       //DEBUG("RK11: Writing RKDA: 0%06o", data);
 
       if(_regs[RK11_RKCS] & RK11_RKCS_RDY)
-        _regs[RK11_RKDA] = data;
+        _regs[RK11_RKDA] = data.GetValue(_regs[RK11_RKDA]);
 
       break;
     }
@@ -188,7 +258,7 @@ void RK11::Write(un_addr addr, cpu_word data, cpu_word mask) {
 
 cpu_word RK11::IrqAck() {
   if(!_irq) {
-    for(int i = 0; i < RK05_DISKS_MAX; ++i) {
+    for(int i = 0; i < RK11_DISKS_MAX; ++i) {
       if(_disks[i].irq) {
         RK11_RKDS_SET_DRIVE(_regs[RK11_RKDS], i);
         _disks[i].irq = false;
@@ -204,75 +274,6 @@ cpu_word RK11::IrqAck() {
   _updateInterrupts();
 
   return RK11_IRQ;
-}
-
-bool RK11::ConnectDisk(int nDisk, bool connected) {
-  if(nDisk < 0 || nDisk >= RK05_DISKS_MAX) {
-    DEBUG("RK11: Attempting to connect disk with invalid number %d", nDisk);
-    return false;
-  }
-
-  if(!connected && _disks[nDisk].connected) {
-    _unloadDisk(nDisk);
-    _disks[nDisk].connected = false;
-
-    DEBUG("RK11: Disk %d disconnected", nDisk);
-  }
-
-  if(connected && !_disks[nDisk].connected) {
-    _disks[nDisk].connected = true;
-
-    DEBUG("RK11: Disk %d connected", nDisk);
-  }
-
-  return true;
-}
-
-bool RK11::LoadDisk(const char *imageFileName, int nDisk) {
-  if(!imageFileName) {
-    DEBUG("RK11: Need disk image file name");
-    return false;
-  }
-
-  if(nDisk < 0 || nDisk >= RK05_DISKS_MAX) {
-    DEBUG("RK11: Attempting to load disk with invalid number %d", nDisk);
-    return false;
-  }
-
-  if(!ConnectDisk(nDisk, false) || !ConnectDisk(nDisk, true))
-    return false;
-
-  FILE *pfImage = fopen(imageFileName, "rb");
-  if(!pfImage) {
-    DEBUG("RK11: Failed to open image file `%s`", imageFileName);
-    return false;
-  }
-
-  const size_t diskSize = (size_t)RK05_SIZE_WORDS * MEM_WORD_SIZE;
-
-  _disks[nDisk].img.resize(diskSize);
-
-  size_t nRead = 0;
-  while(nRead < diskSize) {
-    nRead += fread(_disks[nDisk].img.data() + nRead, 1, diskSize - nRead, pfImage);
-
-    if(feof(pfImage))
-      break;
-
-    if(ferror(pfImage)) {
-      DEBUG("RK11: Error reading the disk image file `%s`", imageFileName);
-
-      fclose(pfImage);
-      ConnectDisk(nDisk, false);
-      return false;
-    }
-  }
-
-  fclose(pfImage);
-
-  DEBUG("RK11: Loaded %lu bytes from image file `%s` to disk %d", nRead, imageFileName, nDisk);
-
-  return true;
 }
 
 void RK11::_controlReset() {
@@ -323,7 +324,7 @@ void RK11::_updateInterrupts() {
 }
 
 void RK11::_unloadDisk(int n) {
-  assert(n >=0 && n < RK05_DISKS_MAX);
+  assert(n >=0 && n < RK11_DISKS_MAX);
 
   _disks[n].Unload();
 
@@ -441,8 +442,8 @@ void RK11::_runFunction() {
     // to change words count of the function while it is running
     unsigned int nWordsCount = 0x10000 - _regs[RK11_RKWC];
 
-    if((nDiskWord + nWordsCount) > RK05_SIZE_WORDS) {
-      nWordsCount = RK05_SIZE_WORDS - nDiskWord;
+    if((nDiskWord + nWordsCount) > RK05_DISK_SIZE_WORDS) {
+      nWordsCount = RK05_DISK_SIZE_WORDS - nDiskWord;
       _regs[RK11_RKER] |= RK11_RKER_OVR;
     }
 
@@ -464,12 +465,12 @@ void RK11::_runFunction() {
 
         for(; nWordsDone < nWordsCount; ++nWordsDone) {
           auto w = _bus->Read(addr);
-          if(w & MEM_HAS_ERR) {
+          if(w.error) {
             _regs[RK11_RKER] |= RK11_RKER_NXM;
             break;
           }
 
-          *data++ = w;
+          *data++ = w.data;
 
           if(!(_regs[RK11_RKCS] & RK11_RKCS_IBA))
             addr += MEM_WORD_SIZE;
@@ -492,7 +493,7 @@ void RK11::_runFunction() {
         // DEBUG("RK11: Reading %u words from disk [img 0x%06X] to memory location 0%06o", nWordsCount, nDiskWord * 2, addr);
 
         for(; nWordsDone < nWordsCount; ++nWordsDone) {
-          if(_bus->Write(addr, *data++, 0xFFFF) & MEM_HAS_ERR) {
+          if(_bus->Write(addr, PartialValue(*data++)).error) {
             _regs[RK11_RKER] |= RK11_RKER_NXM;
             break;
           }

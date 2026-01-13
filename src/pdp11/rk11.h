@@ -14,8 +14,9 @@
 
 #define RK11_NREGS 8
 
-#define RK05_DISKS_MAX  8
-#define RK05_SIZE_WORDS 1247232
+#define RK11_DISKS_MAX  8
+
+#define RK05_DISK_SIZE_WORDS 1247232
 
 // RKDS - Device Status Register
 // Bit  Designation
@@ -167,11 +168,6 @@ class RK11 : public Device {
   public:
     RK11(const std::shared_ptr<Unibus>& bus, const std::shared_ptr<TaskScheduler>& ts);
 
-    void Reset() override;
-    cpu_word Read(un_addr addr) override;
-    void Write(un_addr addr, cpu_word data, cpu_word mask) override;
-    cpu_word IrqAck() override;
-
     bool ConnectDisk(int nDisk, bool connected);
     bool LoadDisk(const char* imageFileName, int nDisk);
 
@@ -186,6 +182,12 @@ class RK11 : public Device {
     cpu_word Get_RKDB() const { return _regs[RK11_RKDB]; };
     bool Get_IRQ() const { return _irq; };
 
+  protected:
+    void Reset() override;
+    cpu_word Read(un_addr addr) override;
+    void Write(un_addr addr, const PartialValue& data) override;
+    cpu_word IrqAck() override;
+
   private:
     void _controlReset();
     void _updateInterrupts();
@@ -194,7 +196,7 @@ class RK11 : public Device {
     void _finishFunction();
 
   private:
-    RK05 _disks[RK05_DISKS_MAX];
+    RK05 _disks[RK11_DISKS_MAX];
     cpu_word _regs[RK11_NREGS] = {};
     bool _irq = false;
     int _currentDrive = 0;

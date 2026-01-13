@@ -45,12 +45,11 @@ cpu_word KW11::Read(un_addr addr) {
   return _SR;
 }
 
-void KW11::Write(un_addr addr, cpu_word data, cpu_word mask) {
+void KW11::Write(un_addr addr, const PartialValue& data) {
   assert((addr & 1) == 0);
   assert(addr == KW11_ADDR);
-  assert(mask == 0xFFFF);
 
-  _SR = data & KW11_SR_MASK;
+  _SR = data.GetValue(_SR) & KW11_SR_MASK;
 
   if(!(_SR & KW11_SR_IE))
     ClearIRQ();

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <optional>
 
 // 22-bit physical address
 typedef uint32_t ph_size;
@@ -45,17 +46,47 @@ typedef uint16_t cpu_addr;
 #define MEM_ERR_UNB_TIMEOUT (1 << 4)
 #define MEM_ERR_YZ_STACK    (1 << 3)
 #define MEM_ERR_RZ_STACK    (1 << 2)
-#define MEM_ERR(err)        (MEM_HAS_ERR | (err))
 
-typedef uint32_t data_status_t;
-typedef uint32_t addr_status_t;
+struct DataStatus {
+  DataStatus(cpu_word data, bool isError = false):
+    data(data),
+    error(isError)
+  {}
+
+  static auto Error(cpu_word code) { return DataStatus(code, true); }
+
+  cpu_word data;
+  bool error;
+};
+
+class PartialValue {
+  public:
+    explicit PartialValue(cpu_word data, cpu_word mask = 0xFFFF):
+      _data(data),
+      _mask(mask)
+    {}
+
+    cpu_word GetValue(cpu_word curValue) const { return (_data & _mask) | (curValue & ~_mask); }
+
+  private:
+    cpu_word _data;
+    cpu_word _mask;
+};
 
 class RAM {
   public:
     void Poke(ph_addr base, const uint8_t* buf, ph_size size);
 
-    data_status_t Read(ph_addr addr);
-    data_status_t Write(ph_addr addr, cpu_word data, cpu_word mask);
+    bool LoadFile(const char* imageFileName, ph_addr base);
+    std::optional<cpu_addr> LoadTape(const char* imageFileName, ph_addr base);
+
+    bool DumpToFile(const char* fileName);
+
+    DataStatus Read(ph_addr addr);
+    DataStatus Write(ph_addr addr, const PartialValue& data);
+
+  private:
+    ssize_t _readFile(const char* imageFileName, uint8_t* buf, size_t size);
 
   private:
     cpu_word _mem[MEM_SIZE_WORDS] = {};
@@ -77,15 +108,13 @@ class UnibusDevice {
     {}
     virtual ~UnibusDevice() = default;
 
-    virtual void Reset() = 0;
-    virtual cpu_word Read(un_addr addr) = 0;
-    virtual void Write(un_addr addr, cpu_word data, cpu_word mask) = 0;
-    virtual cpu_word IrqAck() = 0;
-
     const char* GetName() const { return _name; }
 
-  public:
-    static cpu_word AugmentData(cpu_word data, cpu_word val, cpu_word mask);
+  protected:
+    virtual void Reset() = 0;
+    virtual cpu_word Read(un_addr addr) = 0;
+    virtual void Write(un_addr addr, const PartialValue& data) = 0;
+    virtual cpu_word IrqAck() = 0;
 
   protected:
     std::vector<IoWindow> _ioMap;
@@ -100,8 +129,8 @@ class Unibus {
       _ram(ram)
     {}
 
-    data_status_t Read(un_addr addr);
-    data_status_t Write(un_addr addr, cpu_word data, cpu_word mask);
+    DataStatus Read(un_addr addr);
+    DataStatus Write(un_addr addr, const PartialValue& data);
 
     void RegisterDevice(UnibusDevice* dev);
     void UnregisterDevice(UnibusDevice* dev);

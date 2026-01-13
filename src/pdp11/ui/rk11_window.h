@@ -43,7 +43,7 @@ class RK11_window {
       ImGui::RadioButton("IRQ", _rk11->Get_IRQ());
 
       if(ImGui::CollapsingHeader("Disks", ImGuiTreeNodeFlags_DefaultOpen)) {
-        for(int i = 0; i < RK05_DISKS_MAX; ++i) {
+        for(int i = 0; i < RK11_DISKS_MAX; ++i) {
           auto disk = _rk11->Get_RK05(i);
 
           if(!disk.connected)

@@ -14,6 +14,7 @@ class Device : public UnibusDevice {
     Device(const std::shared_ptr<Unibus>& bus, const std::shared_ptr<TaskScheduler> &ts, const std::vector<IoWindow>& ioMap, int irqPriority, const char* name);
     ~Device() override;
 
+  protected:
     void SetIRQ();
     void ClearIRQ();
 
