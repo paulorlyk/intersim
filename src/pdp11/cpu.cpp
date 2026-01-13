@@ -420,7 +420,7 @@ cpu_word CPU::IrqAck() {
 
 bool CPU::Run() {
   // TODO: Debug
-  // if(_GPR[7] == 0001000) {
+  // if(_GPR[7] == 013362) {
   //   _disassemblyOutput = true;
   //   DEBUG("debug");
   // }
@@ -480,13 +480,17 @@ bool CPU::Run() {
   }
 
   // TODO: Debug
-  if(_disassemblyOutput) {
-    static int ctr = 0;
-    DEBUG("%d %s", ctr++, _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, _mmu));
-
-    // if(ctr >= 2000)
-    //   DEBUG("debug");
-  }
+  // static long int ctr = 0;
+  // ctr++;
+  // if(ctr == 4500000)
+  //   _disassemblyOutput = true;
+  //
+  // if(_disassemblyOutput) {
+  //   DEBUG("%ld %s", ctr, _formatInstruction(_GPR[7], instWord, &inst, _PSW, _mem, _mmu));
+  //
+  //   // if(ctr >= 2000)
+  //   //   DEBUG("debug");
+  // }
 
   cpu_word srcVal = 0;
   operand_addr srcAddr = 0;
@@ -500,9 +504,14 @@ bool CPU::Run() {
     case _mov:
     case _movb: {
       if(   _load(inst.srcMode, inst.src, byteFlag, &srcAddr, &srcVal)
-         && _makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)
-         && _store(dstAddr, srcVal)) {
-        _setFlags(srcVal & 0x8000, !srcVal, 0, PSW_GET_C(_PSW));
+         && _makeOperandAddress(inst.dstMode, inst.dst, byteFlag, &dstAddr)) {
+        if(byteFlag && (dstAddr & OPERAND_TYPE_REG)) {
+          srcVal = SIGN_EXTEND_BYTE(srcVal);
+          dstAddr &= ~OPERAND_TYPE_BYTE;
+        }
+
+        if(_store(dstAddr, srcVal))
+          _setFlags(srcVal & 0x8000, !srcVal, 0, PSW_GET_C(_PSW));
       }
       break;
     }
@@ -554,7 +563,7 @@ bool CPU::Run() {
          && _load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
         uint32_t res = (uint32_t)srcVal + dstVal;
         if(_store(dstAddr, res))
-          _setFlags(res & 0x8000, !res, CALC_V(srcVal, dstVal, res), res & 0x10000);
+          _setFlags(res & 0x8000, !(res & 0xFFFF), CALC_V(res, dstVal, srcVal), res & 0x10000);
       }
       break;
     }
@@ -564,12 +573,15 @@ bool CPU::Run() {
          && _load(inst.dstMode, inst.dst, false, &dstAddr, &dstVal)) {
         uint32_t res = (uint32_t)dstVal - srcVal;
         if(_store(dstAddr, res))
-          _setFlags(res & 0x8000, !res, CALC_V(dstVal, srcVal, res), res & 0x10000);
+          _setFlags(res & 0x8000, !(res & 0xFFFF), CALC_V(dstVal, srcVal, res), res & 0x10000);
       }
       break;
     }
 
     case _mul: {
+      // _trap(TRAP_RESERVED_INSTRUCTION);
+      // break;
+
       if(!_load(inst.srcMode, inst.src, false, &srcAddr, &srcVal))
         break;
       dstVal = _GPR[inst.reg];
@@ -582,7 +594,7 @@ bool CPU::Run() {
       _GPR[inst.reg] = mul >> 16;
       _GPR[inst.reg | 1] = mul;
 
-      _setFlags(mul & 0x80000000, !mul, 0, mul < -32768 || mul >= 32768);
+      _setFlags(mul & 0x80000000, !(mul & 0xFFFF), 0, mul < -32768 || mul >= 32768);
       break;
     }
 
@@ -605,7 +617,7 @@ bool CPU::Run() {
           _GPR[inst.reg] = quot & 0xFFFF;
           _GPR[inst.reg | 1] = rem & 0xFFFF;
 
-          _setFlags(quot < 0, !quot, 0, 0);
+          _setFlags(quot < 0, !(quot & 0xFFFF), 0, 0);
         } else {
           _setFlags(0, 0, 1, 0);  // Result is unrepresentable in 16 bit register
         }
@@ -707,8 +719,15 @@ bool CPU::Run() {
       break;
     }
 
-    case _com: assert(false);
-    case _comb: assert(false);
+    case _com:
+    case _comb: {
+      if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
+        dstVal = ~dstVal;
+        if(_store(dstAddr, dstVal))
+          _setFlags(dstVal & 0x8000, !dstVal, 0, 1);
+      }
+      break;
+    }
 
     case _inc:
     case _incb: {
@@ -745,7 +764,7 @@ bool CPU::Run() {
       if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
         uint32_t res = (uint32_t)dstVal + PSW_GET_C(_PSW);
         if(_store(dstAddr, res))
-          _setFlags(res & 0x8000, !res, dstVal == 0x7FFF && PSW_GET_C(_PSW), dstVal == 0xFFFF && PSW_GET_C(_PSW));
+          _setFlags(res & 0x8000, !(res & 0xFFFF), (dstVal == 0x7FFF) && PSW_GET_C(_PSW), (dstVal == 0xFFFF) && PSW_GET_C(_PSW));
       }
       break;
     }
@@ -755,7 +774,7 @@ bool CPU::Run() {
       if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
         uint32_t res = (uint32_t)dstVal - PSW_GET_C(_PSW);
         if(_store(dstAddr, res))
-          _setFlags(res & 0x8000, !res, res == 0x8000, res || !PSW_GET_C(_PSW));
+          _setFlags(res & 0x8000, !(res & 0xFFFF), res == 0x8000, res & 0x10000);
       }
       break;
     }
@@ -770,11 +789,12 @@ bool CPU::Run() {
     case _ror:
     case _rorb: {
       if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-        cpu_word res = (dstVal >> 1) | (PSW_GET_C(_PSW) << 15);
+        auto cc = PSW_GET_C(_PSW);
+        cpu_word res = ((dstVal & (byteFlag ? 0x00FF : 0xFFFF)) >> 1) | (PSW_GET_C(_PSW) << (byteFlag ? 7 : 15));
         if(_store(dstAddr, res)) {
-          bool n = res & 0x8000;
+          bool n = PSW_GET_C(_PSW);
           bool c = dstVal & 1;
-          _setFlags(n, !res, n != c, c);
+          _setFlags(n, !(res & (byteFlag ? 0x00FF : 0xFFFF)), n != c, c);
         }
       }
       break;
@@ -783,11 +803,12 @@ bool CPU::Run() {
     case _rol:
     case _rolb: {
       if(_load(inst.dstMode, inst.dst, byteFlag, &dstAddr, &dstVal)) {
-        uint32_t res = (dstVal << 1) | PSW_GET_C(_PSW);
+        auto cc = PSW_GET_C(_PSW);
+        cpu_word res = (dstVal << 1) | PSW_GET_C(_PSW);
         if(_store(dstAddr, res)) {
-          bool n = res & 0x8000;
-          bool c = res & 0x10000;
-          _setFlags(n, !res, n != c, c);
+          bool n = res & (byteFlag ? 0x0080 : 0x8000);
+          bool c = dstVal & (byteFlag ? 0x0080 : 0x8000);
+          _setFlags(n, !(res & (byteFlag ? 0x00FF : 0xFFFF)), n != c, c);
         }
       }
       break;
@@ -813,7 +834,7 @@ bool CPU::Run() {
         if(_store(dstAddr, res)) {
           bool n = res & 0x8000;
           bool c = res & 0x10000;
-          _setFlags(n, !res, n != c, c);
+          _setFlags(n, !(res & 0xFFFF), n != c, c);
         }
       }
       break;
@@ -1216,7 +1237,10 @@ bool CPU::_load(CpuAddressingMode mode, int reg, bool bByte, operand_addr *pAddr
 
 bool CPU::_store(operand_addr addr, cpu_word data) {
   if(addr & OPERAND_TYPE_REG) {
-    _GPR[addr & 7] = data;
+    if(addr & OPERAND_TYPE_BYTE)
+      _GPR[addr & 7] = (_GPR[addr & 7] & 0xFF00) | (data & 0x00FF);
+    else
+      _GPR[addr & 7] = data;
     return true;
   }
 

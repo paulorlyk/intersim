@@ -78,16 +78,16 @@ std::optional<cpu_addr> RAM::LoadTape(const char *imageFileName, ph_addr base) {
         }
 
         if(b != 0) {
-          ERROR("Invalid byte 0x%02x at position %ld while looking for signature", b, i);
-          return std::nullopt;
+          WARN("Invalid byte 0x%02x at position %ld while looking for signature, expected 1", b, i);
+          break;
         }
         break;
       }
 
       case signature2: {
         if(b != 0) {
-          ERROR("Invalid byte 0x%02x at position %ld while looking for signature", b, i);
-          return std::nullopt;
+          WARN("Invalid byte 0x%02x at position %ld while looking for signature, expected 0", b, i);
+          break;
         }
 
         state = block_len1;
@@ -200,8 +200,6 @@ bool RAM::DumpToFile(const char *fileName) {
 }
 
 DataStatus RAM::Read(ph_addr addr) {
-  assert((addr & 1) == 0);
-
   if(addr >= MEM_SIZE_BYTES)
     return DataStatus::Error(MEM_ERR_NX_MEM);
 
@@ -209,8 +207,6 @@ DataStatus RAM::Read(ph_addr addr) {
 }
 
 DataStatus RAM::Write(ph_addr addr, const PartialValue& data) {
-  assert((addr & 1) == 0);
-
   if(addr >= MEM_SIZE_BYTES)
     return DataStatus::Error(MEM_ERR_NX_MEM);
 

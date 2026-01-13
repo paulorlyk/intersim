@@ -14,7 +14,7 @@
 #define GET_BIT_FIELD(word, mask, offset) (((word) & (mask)) >> (offset))
 #define SET_BIT_FIELD(word, val, mask, offset) (((word) & ~(mask)) | (((val) << (offset)) & (mask)))
 
-#define SIGN_EXTEND_BYTE(b) (((b) & 0xFF) ^ ((~0xFF) * (((b) & 0x0080) != 0)))   // Assume two's complement integers
+#define SIGN_EXTEND_BYTE(b) (((b) & 0xFF) | ((~0xFF) * (((b) & 0x80) != 0)))   // Assume two's complement integers
 
 typedef uint32_t operand_addr;
 

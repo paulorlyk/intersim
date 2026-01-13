@@ -42,6 +42,37 @@ static const cpu_word _bootstrap_RK11[] = {
   0100376,    // bpl .-2
   0005007     // clr pc
 };
+
+// /*
+// RL11 - RL01/RL02 Bootstrap Loader
+// 001000: 012701 174400          MOV   #174400,R1
+// 001004: 012761 000013 000004   MOV   #13,4(R1)
+// 001012: 012711 000004          MOV   #4,@R1                 ;RLCS
+// 001016: 105711                 TSTB  @R1                    ;RLCS
+// 001020: 100376                 BPL   001016
+// 001022: 005061 000002          CLR   2(R1)
+// 001026: 005061 000004          CLR   4(R1)
+// 001032: 012761 177400 000006   MOV   #177400,6(R1)
+// 001040: 012711 000014          MOV   #14,@R1                ;RLCS
+// 001044: 105711                 TSTB  @R1                    ;RLCS
+// 001046: 100376                 BPL   001044
+// 001050: 005007                 CLR   PC
+// */
+// static const cpu_word _bootstrap_RL11[] = {
+//   0012701, 0174400,           // MOV   #174400,R1
+//   0012761, 0000013, 0000004,  // MOV   #13,4(R1)
+//   0012711, 0000004,           // MOV   #4,@R1                 ;RLCS
+//   0105711,                    // TSTB  @R1                    ;RLCS
+//   0100376,                    // BPL   001016
+//   0005061, 0000002,           // CLR   2(R1)
+//   0005061, 0000004,           // CLR   4(R1)
+//   0012761, 0177400, 0000006,  // MOV   #177400,6(R1)
+//   0012711, 0000014,           // MOV   #14,@R1                ;RLCS
+//   0105711,                    // TSTB  @R1                    ;RLCS
+//   0100376,                    // BPL   001044
+//   0005007                     // CLR   PC
+// };
+
 const cpu_addr _bootstrapBase = 0001000;
 
 int main() {
@@ -109,10 +140,31 @@ int main() {
   auto scheduler = std::make_shared<TaskScheduler>();
 
   Mem mem;
-  mem.GetRAM()->Poke(_bootstrapBase, (uint8_t *)_bootstrap, sizeof(_bootstrap));
   mem.GetRAM()->Poke(_bootstrapBase, (uint8_t *)_bootstrap_RK11, sizeof(_bootstrap_RK11));
+  // mem.GetRAM()->Poke(_bootstrapBase, (uint8_t *)_bootstrap_RL11, sizeof(_bootstrap_RL11));
   // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0AA-PB.ptap", 0)) return EXIT_FAILURE;
   // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0BA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0CA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0DA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0EA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0FA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0GA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0HA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0IA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0JA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0KA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0LA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0MA-PB.ptap", 0)) return EXIT_FAILURE;
+
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0NA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0NB-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0NC-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0OA-PB.ptap", 0)) return EXIT_FAILURE;
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/MAINDEC-11-D0QB-PB.ptap", 0)) return EXIT_FAILURE;
+
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/maindec-11-dekbe-b-pb.bin", 0)) return EXIT_FAILURE;
+
+  // if(!mem.GetRAM()->LoadTape("img/MAINDEC/maindec-11-deqkc-b1-pb.bin", 0)) return EXIT_FAILURE;
 
   // if(!mem.GetRAM()->DumpToFile("img/ram.img")) return EXIT_FAILURE;
 
@@ -192,7 +244,7 @@ int main() {
   auto tsRender = scheduler->SetInterval(doRender, TS_SECONDS / 60);
 
   auto tsCpu = scheduler->SetInterval([&cpu]() {
-    for(int i = 0; i < 300000; ++i) {
+    for(int i = 0; i < 3000; ++i) {
       if(!cpu.Run())
         break;
     }

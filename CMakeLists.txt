@@ -61,3 +61,7 @@ target_link_libraries(${PROJECT_NAME}
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC
 )
+
+target_compile_options(${PROJECT_NAME} PUBLIC
+#    -O3
+)
