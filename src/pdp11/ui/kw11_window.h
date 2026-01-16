@@ -25,7 +25,7 @@ class KW11_window {
       ImGui::Begin("KW11-L - Line time clock", &show);
 
       auto sr = _kw11->Get_SR();
-      if(ImGui::CollapsingHeader(std::format("SR: {:04x}", sr).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+      if(ImGui::CollapsingHeader(std::format("SR: {:06o}", sr).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Indent();
 
         ImGui::Text("IE = %d", (sr & KW11_SR_IE) != 0);

@@ -24,21 +24,21 @@ class RK11_window {
       ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, { 0.5f, 0.5f });
       ImGui::Begin("RK11 - Moving head disk drive controller", &show);
 
-      ImGui::Text("RKDS: %04x", _rk11->Get_RKDS());
+      ImGui::Text("RKDS: %06o", _rk11->Get_RKDS());
       ImGui::SameLine();
-      ImGui::Text("RKER: %04x", _rk11->Get_RKER());
+      ImGui::Text("RKER: %06o", _rk11->Get_RKER());
       ImGui::SameLine();
-      ImGui::Text("RKCS: %04x", _rk11->Get_RKCS());
+      ImGui::Text("RKCS: %06o", _rk11->Get_RKCS());
       ImGui::SameLine();
-      ImGui::Text("RKWC: %04x", _rk11->Get_RKWC());
+      ImGui::Text("RKWC: %06o", _rk11->Get_RKWC());
 
-      ImGui::Text("RKBA: %04x", _rk11->Get_RKBA());
+      ImGui::Text("RKBA: %06o", _rk11->Get_RKBA());
       ImGui::SameLine();
-      ImGui::Text("RKDA: %04x", _rk11->Get_RKDA());
+      ImGui::Text("RKDA: %06o", _rk11->Get_RKDA());
       ImGui::SameLine();
-      ImGui::Text("RKMR: %04x", _rk11->Get_RKMR());
+      ImGui::Text("RKMR: %06o", _rk11->Get_RKMR());
       ImGui::SameLine();
-      ImGui::Text("RKDB: %04x", _rk11->Get_RKDB());
+      ImGui::Text("RKDB: %06o", _rk11->Get_RKDB());
 
       ImGui::RadioButton("IRQ", _rk11->Get_IRQ());
 

@@ -26,7 +26,7 @@ class CPU1170_window {
       ImGui::Begin("PDP-11/70 CPU", &show);
 
       auto psw = _cpu->Get_PSW();
-      if(ImGui::CollapsingHeader(std::format("PSW: {:04x}", psw).c_str())) {
+      if(ImGui::CollapsingHeader(std::format("PSW: {:06o} - {}{}{}{}", psw, PSW_GET_C(psw) ? "C" : "", PSW_GET_V(psw) ? "V" : "", PSW_GET_Z(psw) ? "Z" : "", PSW_GET_N(psw) ? "N" : "").c_str())) {
         ImGui::Indent();
 
         ImGui::Text("C = %d", PSW_GET_C(psw));
@@ -51,7 +51,7 @@ class CPU1170_window {
         for(int i = 0; i < 8; ++i) {
           ImGui::PushID(i);
 
-          ImGui::Text("%s: %04x", _registerNames[i], _cpu->Get_RegSet(rs)[i]);
+          ImGui::Text("%s: %06o", _registerNames[i], _cpu->Get_RegSet(rs)[i]);
 
           if(i < 7 && (i % 2) == 0) {
             ImGui::SameLine();
@@ -72,7 +72,7 @@ class CPU1170_window {
       for(int i = 0; i < _cpu_mode_max; ++i) {
         ImGui::PushID(i);
 
-        ImGui::Text("%s: %04x", _modeNames[i], _cpu->Get_LastSP()[i]);
+        ImGui::Text("%s: %06o", _modeNames[i], _cpu->Get_LastSP()[i]);
         if(i < 3 && (i % 2) == 0) {
           ImGui::SameLine();
           ImGui::Spacing();

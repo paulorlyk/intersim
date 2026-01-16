@@ -29,12 +29,12 @@ class DL11_window {
       ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, { 0.5f, 0.5f });
       ImGui::Begin("DL11 - Asynchronous line interface", &show);
 
-      ImGui::Text("Addr: 0%06o", _dl11->GetBaseAddress());
+      ImGui::Text("Addr: %06o", _dl11->GetBaseAddress());
       ImGui::SameLine();
       ImGui::Text("IRQ : 0%o", _dl11->GetBaseVector());
 
       auto rcsr = _dl11->Get_RCSR();
-      if(ImGui::CollapsingHeader(std::format("RCSR: {:04x}", rcsr).c_str())) {
+      if(ImGui::CollapsingHeader(std::format("RCSR: {:06o}", rcsr).c_str())) {
         ImGui::Indent();
 
         ImGui::Text("RDR_ENB = %d", (rcsr & DL11_RCSR_RDR_ENB) != 0);
@@ -60,7 +60,7 @@ class DL11_window {
         const char ch = DL11_RBUF_GET_DATA(rbuf);
         auto chStr = _printCharacter(ch);
 
-        if(ImGui::CollapsingHeader(std::format("RBUF: {:04x} - '{}'", rbuf, chStr).c_str())) {
+        if(ImGui::CollapsingHeader(std::format("RBUF: {:06o} - '{}'", rbuf, chStr).c_str())) {
           ImGui::Indent();
 
           ImGui::Text("DATA = 0%03o (%s)", ch, chStr);
@@ -74,7 +74,7 @@ class DL11_window {
       }
 
       auto xcsr = _dl11->Get_XCSR();
-      if(ImGui::CollapsingHeader(std::format("XCSR: {:04x}", xcsr).c_str())) {
+      if(ImGui::CollapsingHeader(std::format("XCSR: {:06o}", xcsr).c_str())) {
         ImGui::Indent();
 
         ImGui::Text("BREAK = %d", (xcsr & DL11_XCSR_BREAK) != 0);
@@ -90,7 +90,7 @@ class DL11_window {
         const char ch = DL11_XBUF_GET_DATA(xbuf);
         auto chStr = _printCharacter(ch);
 
-        if(ImGui::CollapsingHeader(std::format("XBUF: {:04x} - '{}'", xbuf, chStr).c_str())) {
+        if(ImGui::CollapsingHeader(std::format("XBUF: {:06o} - '{}'", xbuf, chStr).c_str())) {
           ImGui::Indent();
 
           ImGui::Text("DATA = 0%03o (%s)", ch, chStr);

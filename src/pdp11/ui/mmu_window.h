@@ -25,19 +25,19 @@ class MMU_window {
       ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, { 0.5f, 0.5f });
       ImGui::Begin("PDP-11/70 MMU", &show);
 
-      ImGui::Text("MMR0: %04x", _mmu->Get_MMR0());
+      ImGui::Text("MMR0: %06o", _mmu->Get_MMR0());
       ImGui::SameLine();
       ImGui::Spacing();
       ImGui::SameLine();
-      ImGui::Text("MMR1: %04x", _mmu->Get_MMR1());
+      ImGui::Text("MMR1: %06o", _mmu->Get_MMR1());
       ImGui::SameLine();
       ImGui::Spacing();
       ImGui::SameLine();
-      ImGui::Text("MMR2: %04x", _mmu->Get_MMR2());
+      ImGui::Text("MMR2: %06o", _mmu->Get_MMR2());
       ImGui::SameLine();
       ImGui::Spacing();
       ImGui::SameLine();
-      ImGui::Text("MMR3: %04x", _mmu->Get_MMR3());
+      ImGui::Text("MMR3: %06o", _mmu->Get_MMR3());
 
       for(int mode = 0; mode < _cpu_mode_max; ++mode) {
         if(mode == cpu_mode_Invalid)
@@ -54,7 +54,7 @@ class MMU_window {
             for(int i = 0; i < 8; ++i) {
               ImGui::PushID(i);
 
-              ImGui::Text("%04x", _mmu->Get_PAR(space, mode)[i]);
+              ImGui::Text("%06o", _mmu->Get_PAR(space, mode)[i]);
 
               if(i < 7) {
                 ImGui::SameLine();
@@ -71,7 +71,7 @@ class MMU_window {
             for(int i = 0; i < 8; ++i) {
               ImGui::PushID(i);
 
-              ImGui::Text("%04x", _mmu->Get_PDR(space, mode)[i]);
+              ImGui::Text("%06o", _mmu->Get_PDR(space, mode)[i]);
 
               if(i < 7) {
                 ImGui::SameLine();
